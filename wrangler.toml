@@ -1,0 +1,32 @@
+name = "l4"
+main = "src/index.ts"
+compatibility_date = "2024-12-18"
+
+[observability]
+enabled = true
+
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "l4-images"
+
+[[kv_namespaces]]
+binding = "L4"
+id = "dee452afc1134a58aee704dfda12a703"
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = false
+
+[vars]
+HOST = "https://l4.yourdomain.com"
+INDIKO_URL = "https://indiko.dunkirk.sh"
+
+# Environment variables
+# For local development, set in .dev.vars file:
+# INDIKO_CLIENT_ID=your_client_id
+# INDIKO_CLIENT_SECRET=your_client_secret
+#
+# For production, set as secrets:
+# wrangler secret put INDIKO_CLIENT_ID
+# wrangler secret put INDIKO_CLIENT_SECRET

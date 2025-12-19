@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>login - l4</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+    <style>
+        :root {
+            --evergreen: #16302b;
+            --vintage-grape: #694873;
+            --dusty-mauve: #8b728e;
+            --muted-teal: #85b79d;
+            --tea-green: #c0e5c8;
+            --evergreen-dark: #0d1f1b;
+            --input-bg: #1a3530;
+            --border-color: #2a4540;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            background: var(--evergreen);
+        }
+
+        body {
+            font-family: "Courier New", monospace;
+            background: var(--evergreen);
+            color: var(--tea-green);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 1.25rem;
+        }
+
+        .login-container {
+            background: var(--input-bg);
+            border: 0.0625rem solid var(--border-color);
+            padding: 3rem;
+            max-width: 450px;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--muted-teal), var(--tea-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.0625rem;
+        }
+
+        p {
+            color: var(--muted-teal);
+            margin-bottom: 2rem;
+            font-size: 0.9375rem;
+        }
+
+        button {
+            width: 100%;
+            padding: 1rem;
+            background: var(--vintage-grape);
+            color: var(--tea-green);
+            border: none;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: "Courier New", monospace;
+            transition: background 0.15s;
+        }
+
+        button:hover {
+            background: var(--dusty-mauve);
+        }
+
+        button:focus {
+            outline: 0.0625rem solid var(--tea-green);
+            outline-offset: 0;
+        }
+
+        .error {
+            background: #8b2828;
+            border: 0.0625rem solid #a03030;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            color: #ffb3b3;
+            font-size: 0.875rem;
+        }
+
+        .shortcut {
+            color: var(--muted-teal);
+            font-size: 0.75rem;
+            margin-top: 1rem;
+            text-align: center;
+        }
+
+        .shortcut kbd {
+            background: var(--evergreen);
+            padding: 0.125rem 0.375rem;
+            border: 0.0625rem solid var(--border-color);
+            font-size: 0.6875rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1>l4</h1>
+        <p>high-performance image cache powered by cloudflare r2</p>
+        
+        <div id="error" class="error" style="display: none;"></div>
+        
+        <button onclick="login()" autofocus>login with indiko</button>
+
+        <div class="shortcut">
+            press <kbd>enter</kbd> to login
+        </div>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const error = params.get('error');
+        
+        if (error) {
+            const errorDiv = document.getElementById('error');
+            const messages = {
+                'missing_params': 'missing authorization parameters',
+                'invalid_state': 'invalid state parameter',
+                'token_exchange_failed': 'failed to exchange authorization code',
+                'unauthorized_role': 'you need admin or viewer role to access this application',
+                'unknown': 'an unknown error occurred'
+            };
+            
+            errorDiv.textContent = messages[error] || messages.unknown;
+            errorDiv.style.display = 'block';
+        }
+
+        function login() {
+            window.location.href = '/api/login';
+        }
+
+        // Enter key to login
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                login();
+            }
+        });
+    </script>
+</body>
+</html>
