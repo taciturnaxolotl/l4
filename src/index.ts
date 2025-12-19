@@ -1,6 +1,7 @@
 import sharp from "sharp";
 import { nanoid } from "nanoid";
-import { recordHit } from "./stats";
+import { recordHit, getTopImages, getTotalHits, getHourlyTraffic, getDailyTraffic, getStats } from "./stats";
+import dashboard from "./dashboard.html";
 
 // Configuration from env
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL!;
@@ -58,6 +59,36 @@ const server = Bun.serve({
   port: process.env.PORT || 3000,
   
   routes: {
+    "/": {
+      GET(request) {
+        const accept = request.headers.get("Accept") || "";
+        if (accept.includes("text/html")) {
+          const url = new URL(request.url);
+          return Response.redirect(`${url.origin}/dashboard`, 302);
+        }
+        
+        const banner = `
+  ██╗     ██╗  ██╗
+  ██║     ██║  ██║
+  ██║     ███████║
+  ██║     ╚════██║
+  ███████╗     ██║
+  ╚══════╝     ╚═╝
+  
+  L4 Image CDN
+  
+  Endpoints:
+    POST /upload      Upload an image
+    GET  /i/:key      Fetch an image
+    GET  /dashboard   Stats dashboard
+    GET  /health      Health check
+`;
+        return new Response(banner, {
+          headers: { "Content-Type": "text/plain" },
+        });
+      },
+    },
+
     "/slack/events": {
       async POST(request) {
         return handleSlackEvent(request);
@@ -73,6 +104,46 @@ const server = Bun.serve({
     "/health": {
       async GET(request) {
         return Response.json({ status: "ok" });
+      },
+    },
+
+    "/dashboard": dashboard,
+
+    "/api/stats/overview": {
+      GET(request) {
+        const url = new URL(request.url);
+        const days = parseInt(url.searchParams.get("days") || "7");
+        const safeDays = Math.min(Math.max(days, 1), 365);
+        
+        return Response.json({
+          totalHits: getTotalHits(safeDays),
+          topImages: getTopImages(safeDays, 20),
+        });
+      },
+    },
+
+    "/api/stats/traffic": {
+      GET(request) {
+        const url = new URL(request.url);
+        const days = parseInt(url.searchParams.get("days") || "7");
+        const safeDays = Math.min(Math.max(days, 1), 365);
+        
+        if (safeDays <= 7) {
+          return Response.json({ granularity: "hourly", data: getHourlyTraffic(safeDays) });
+        } else {
+          return Response.json({ granularity: "daily", data: getDailyTraffic(safeDays) });
+        }
+      },
+    },
+
+    "/api/stats/image/:key": {
+      GET(request) {
+        const imageKey = request.params.key;
+        const url = new URL(request.url);
+        const days = parseInt(url.searchParams.get("days") || "30");
+        const safeDays = Math.min(Math.max(days, 1), 365);
+        
+        return Response.json(getStats(imageKey, safeDays));
       },
     },
     

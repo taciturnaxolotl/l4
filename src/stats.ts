@@ -62,3 +62,33 @@ export function getTopImages(sinceDays: number = 7, limit: number = 10) {
     )
     .all(since, limit);
 }
+
+export function getTotalHits(sinceDays: number = 30) {
+  const since = Math.floor(Date.now() / 1000) - sinceDays * 86400;
+  const result = db
+    .prepare(`SELECT SUM(hits) as total FROM image_stats WHERE bucket_hour >= ?`)
+    .get(since) as { total: number | null };
+  return result?.total ?? 0;
+}
+
+export function getHourlyTraffic(sinceDays: number = 7) {
+  const since = Math.floor(Date.now() / 1000) - sinceDays * 86400;
+  return db
+    .prepare(
+      `SELECT bucket_hour, SUM(hits) as hits 
+       FROM image_stats WHERE bucket_hour >= ? 
+       GROUP BY bucket_hour ORDER BY bucket_hour`
+    )
+    .all(since) as { bucket_hour: number; hits: number }[];
+}
+
+export function getDailyTraffic(sinceDays: number = 30) {
+  const since = Math.floor(Date.now() / 1000) - sinceDays * 86400;
+  return db
+    .prepare(
+      `SELECT (bucket_hour / 86400) * 86400 as bucket_day, SUM(hits) as hits 
+       FROM image_stats WHERE bucket_hour >= ? 
+       GROUP BY bucket_day ORDER BY bucket_day`
+    )
+    .all(since) as { bucket_day: number; hits: number }[];
+}
