@@ -5,17 +5,26 @@ import { nanoid } from "nanoid";
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL!;
 const PUBLIC_URL = process.env.PUBLIC_URL || "http://localhost:3000";
 
-// S3 config (for logging only - client auto-loads from S3_* env vars)
+// S3 configuration
+const S3_ACCESS_KEY_ID = process.env.S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID!;
+const S3_SECRET_ACCESS_KEY = process.env.S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY!;
 const S3_BUCKET = process.env.S3_BUCKET || process.env.AWS_BUCKET || "l4-images";
-const S3_ENDPOINT = process.env.S3_ENDPOINT || process.env.AWS_ENDPOINT || "unknown";
+const S3_ENDPOINT = process.env.S3_ENDPOINT || process.env.AWS_ENDPOINT!;
+const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || "auto";
 
 // Slack configuration
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN!;
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET!;
 const ALLOWED_CHANNELS = process.env.ALLOWED_CHANNELS?.split(",").map(c => c.trim()) || [];
 
-// Create S3 client for R2 (auto-loads from S3_* or AWS_* env vars)
-const s3 = new Bun.S3Client();
+// Create S3 client for R2 with explicit configuration
+const s3 = new Bun.S3Client({
+  accessKeyId: S3_ACCESS_KEY_ID,
+  secretAccessKey: S3_SECRET_ACCESS_KEY,
+  endpoint: S3_ENDPOINT,
+  bucket: S3_BUCKET,
+  region: S3_REGION,
+});
 
 async function optimizeImage(buffer: Buffer, mimeType: string): Promise<{ buffer: Buffer; contentType: string; extension: string }> {
   // Skip SVGs - just return as-is
@@ -243,6 +252,7 @@ async function callSlackAPI(method: string, params: any) {
 console.log(`L4 Image CDN started on port ${server.port}`);
 console.log(`- S3 Bucket: ${S3_BUCKET}`);
 console.log(`- S3 Endpoint: ${S3_ENDPOINT}`);
+console.log(`- S3 Region: ${S3_REGION}`);
 console.log(`- R2 Public URL: ${R2_PUBLIC_URL}`);
 console.log(`- Public URL: ${PUBLIC_URL}`);
 console.log(`- Slack events: ${PUBLIC_URL}/slack/events`);
