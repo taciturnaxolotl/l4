@@ -42,8 +42,8 @@ async function uploadImageToR2(buffer: Buffer, contentType: string): Promise<str
   const extension = contentType === "image/svg+xml" ? "svg" : "webp";
   const imageKey = `${nanoid(12)}.${extension}`;
 
-  // Upload to R2
-  await s3.file(imageKey).write(buffer, { type: contentType });
+  // Upload to R2 using the S3 client
+  await s3.write(imageKey, buffer, { type: contentType });
 
   return imageKey;
 }
