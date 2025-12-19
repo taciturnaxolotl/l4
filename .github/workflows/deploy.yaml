@@ -28,10 +28,45 @@ jobs:
       - name: Deploy to terebithia
         run: |
           ssh l4@terebithia << 'EOF'
-            set -e
             cd /var/lib/l4/app
-            sudo -u l4 git pull
-            sudo -u l4 bun install
-            sudo systemctl restart l4.service
-            echo "✓ L4 deployed successfully"
+            git fetch --all
+            git reset --hard origin/main
+            bun install
+            sudo /run/current-system/sw/bin/systemctl restart l4.service
           EOF
+      - name: Health check
+        run: |
+          HEALTH_URL="https://l4.dunkirk.sh/health"
+          MAX_RETRIES=6
+          RETRY_DELAY=5
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Health check attempt $i/$MAX_RETRIES..."
+
+            RESPONSE=$(curl -s -w "\n%{http_code}" "$HEALTH_URL" || echo "000")
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            BODY=$(echo "$RESPONSE" | head -n-1)
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              # Validate response contains "status":"ok"
+              if echo "$BODY" | grep -q '"status":"ok"'; then
+                echo "✅ Service is healthy (HTTP $HTTP_CODE)"
+                echo "Response: $BODY"
+                exit 0
+              else
+                echo "❌ Health check returned 200 but invalid body"
+                echo "Response: $BODY"
+              fi
+            else
+              echo "❌ Health check failed with HTTP $HTTP_CODE"
+              echo "Response: $BODY"
+            fi
+
+            if [ $i -lt $MAX_RETRIES ]; then
+              echo "Retrying in ${RETRY_DELAY}s..."
+              sleep $RETRY_DELAY
+            fi
+          done
+
+          echo "❌ Health check failed after $MAX_RETRIES attempts"
+          exit 1

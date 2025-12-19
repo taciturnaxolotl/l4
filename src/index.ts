@@ -61,7 +61,7 @@ const server = Bun.serve({
     
     "/health": {
       async GET(request) {
-        return new Response("OK", { status: 200 });
+        return Response.json({ status: "ok" });
       },
     },
     
