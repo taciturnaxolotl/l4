@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 // Configuration from env
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL!;
 const PUBLIC_URL = process.env.PUBLIC_URL || "http://localhost:3000";
+const AUTH_TOKEN = process.env.AUTH_TOKEN;
 
 // S3 configuration
 const S3_ACCESS_KEY_ID = process.env.S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID!;
@@ -62,6 +63,12 @@ const server = Bun.serve({
       },
     },
     
+    "/upload": {
+      async POST(request) {
+        return handleUpload(request);
+      },
+    },
+    
     "/health": {
       async GET(request) {
         return Response.json({ status: "ok" });
@@ -88,6 +95,40 @@ const server = Bun.serve({
     return new Response("Not found", { status: 404 });
   },
 });
+
+async function handleUpload(request: Request) {
+  try {
+    // Check auth token
+    const authHeader = request.headers.get("Authorization");
+    if (!AUTH_TOKEN || authHeader !== `Bearer ${AUTH_TOKEN}`) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    // Parse multipart form data
+    const formData = await request.formData();
+    const file = formData.get("file") as File;
+    
+    if (!file) {
+      return Response.json({ success: false, error: "No file provided" }, { status: 400 });
+    }
+
+    // Read file buffer
+    const originalBuffer = Buffer.from(await file.arrayBuffer());
+    const contentType = file.type || "image/jpeg";
+
+    // Optimize image
+    const { buffer: optimizedBuffer, contentType: newContentType } = await optimizeImage(originalBuffer, contentType);
+
+    // Upload to R2
+    const imageKey = await uploadImageToR2(optimizedBuffer, newContentType);
+    const url = `${PUBLIC_URL}/i/${imageKey}`;
+
+    return Response.json({ success: true, url });
+  } catch (error) {
+    console.error("Error handling upload:", error);
+    return Response.json({ success: false, error: "Upload failed" }, { status: 500 });
+  }
+}
 
 async function handleSlackEvent(request: Request) {
   try {
