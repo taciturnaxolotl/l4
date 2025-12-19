@@ -1,0 +1,37 @@
+name: Deploy L4 to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:deploy
+          use-cache: "true"
+      
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "StrictHostKeyChecking accept-new" >> ~/.ssh/config
+      
+      - name: Deploy to terebithia
+        run: |
+          ssh kierank@terebithia << 'EOF'
+            set -e
+            cd /var/lib/l4/app
+            sudo -u l4 git pull
+            sudo -u l4 bun install
+            sudo systemctl restart l4.service
+            echo "✓ L4 deployed successfully"
+          EOF
