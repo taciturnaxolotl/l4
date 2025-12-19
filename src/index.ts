@@ -1,7 +1,14 @@
-import sharp from "sharp";
 import { nanoid } from "nanoid";
-import { recordHit, getTopImages, getTotalHits, getUniqueImages, getTraffic, getStats } from "./stats";
+import sharp from "sharp";
 import dashboard from "./dashboard.html";
+import {
+	getStats,
+	getTopImages,
+	getTotalHits,
+	getTraffic,
+	getUniqueImages,
+	recordHit,
+} from "./stats";
 
 // Configuration from env
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL!;
@@ -9,71 +16,82 @@ const PUBLIC_URL = process.env.PUBLIC_URL || "http://localhost:3000";
 const AUTH_TOKEN = process.env.AUTH_TOKEN;
 
 // S3 configuration
-const S3_ACCESS_KEY_ID = process.env.S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID!;
-const S3_SECRET_ACCESS_KEY = process.env.S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY!;
-const S3_BUCKET = process.env.S3_BUCKET || process.env.AWS_BUCKET || "l4-images";
+const S3_ACCESS_KEY_ID =
+	process.env.S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID!;
+const S3_SECRET_ACCESS_KEY =
+	process.env.S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY!;
+const S3_BUCKET =
+	process.env.S3_BUCKET || process.env.AWS_BUCKET || "l4-images";
 const S3_ENDPOINT = process.env.S3_ENDPOINT || process.env.AWS_ENDPOINT!;
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || "auto";
 
 // Slack configuration
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN!;
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET!;
-const ALLOWED_CHANNELS = process.env.ALLOWED_CHANNELS?.split(",").map(c => c.trim()) || [];
+const ALLOWED_CHANNELS =
+	process.env.ALLOWED_CHANNELS?.split(",").map((c) => c.trim()) || [];
 
 // Create S3 client for R2 with explicit configuration
 const s3 = new Bun.S3Client({
-  accessKeyId: S3_ACCESS_KEY_ID,
-  secretAccessKey: S3_SECRET_ACCESS_KEY,
-  endpoint: S3_ENDPOINT,
-  bucket: S3_BUCKET,
-  region: S3_REGION,
+	accessKeyId: S3_ACCESS_KEY_ID,
+	secretAccessKey: S3_SECRET_ACCESS_KEY,
+	endpoint: S3_ENDPOINT,
+	bucket: S3_BUCKET,
+	region: S3_REGION,
 });
 
-async function optimizeImage(buffer: Buffer, mimeType: string, preserveFormat = false): Promise<{ buffer: Buffer; contentType: string; extension: string }> {
-  // Skip SVGs - just return as-is
-  if (mimeType === "image/svg+xml") {
-    return { buffer, contentType: mimeType, extension: "svg" };
-  }
+async function optimizeImage(
+	buffer: Buffer,
+	mimeType: string,
+	preserveFormat = false,
+): Promise<{ buffer: Buffer; contentType: string; extension: string }> {
+	// Skip SVGs - just return as-is
+	if (mimeType === "image/svg+xml") {
+		return { buffer, contentType: mimeType, extension: "svg" };
+	}
 
-  // If preserveFormat is true, keep original format
-  if (preserveFormat) {
-    const extension = mimeType.split("/")[1] || "jpg";
-    return { buffer, contentType: mimeType, extension };
-  }
+	// If preserveFormat is true, keep original format
+	if (preserveFormat) {
+		const extension = mimeType.split("/")[1] || "jpg";
+		return { buffer, contentType: mimeType, extension };
+	}
 
-  // Convert to WebP with optimization (effort 4 = balanced speed/compression)
-  const optimized = await sharp(buffer)
-    .webp({ quality: 85, effort: 4 }) // effort: 0-6, 4 is faster than 6 with minimal quality loss
-    .toBuffer();
+	// Convert to WebP with optimization (effort 4 = balanced speed/compression)
+	const optimized = await sharp(buffer)
+		.webp({ quality: 85, effort: 4 }) // effort: 0-6, 4 is faster than 6 with minimal quality loss
+		.toBuffer();
 
-  return { buffer: optimized, contentType: "image/webp", extension: "webp" };
+	return { buffer: optimized, contentType: "image/webp", extension: "webp" };
 }
 
-async function uploadImageToR2(buffer: Buffer, contentType: string): Promise<string> {
-  // Skip collision check - nanoid(12) has 4.7 quadrillion possibilities, collision is astronomically unlikely
-  const extension = contentType === "image/svg+xml" ? "svg" : "webp";
-  const imageKey = `${nanoid(12)}.${extension}`;
+async function uploadImageToR2(
+	buffer: Buffer,
+	contentType: string,
+): Promise<string> {
+	// Skip collision check - nanoid(12) has 4.7 quadrillion possibilities, collision is astronomically unlikely
+	const extension = contentType === "image/svg+xml" ? "svg" : "webp";
+	const imageKey = `${nanoid(12)}.${extension}`;
 
-  // Upload to R2 using the S3 client
-  await s3.write(imageKey, buffer, { type: contentType });
+	// Upload to R2 using the S3 client
+	await s3.write(imageKey, buffer, { type: contentType });
 
-  return imageKey;
+	return imageKey;
 }
 
 // HTTP server for Slack events
 const server = Bun.serve({
-  port: process.env.PORT || 3000,
-  
-  routes: {
-    "/": {
-      GET(request) {
-        const accept = request.headers.get("Accept") || "";
-        if (accept.includes("text/html")) {
-          const url = new URL(request.url);
-          return Response.redirect(`${url.origin}/dashboard`, 302);
-        }
-        
-        const banner = `
+	port: process.env.PORT || 3000,
+
+	routes: {
+		"/": {
+			GET(request) {
+				const accept = request.headers.get("Accept") || "";
+				if (accept.includes("text/html")) {
+					const url = new URL(request.url);
+					return Response.redirect(`${url.origin}/dashboard`, 302);
+				}
+
+				const banner = `
   ██╗     ██╗  ██╗
   ██║     ██║  ██║
   ██║     ███████║
@@ -89,307 +107,329 @@ const server = Bun.serve({
     GET  /dashboard   Stats dashboard
     GET  /health      Health check
 `;
-        return new Response(banner, {
-          headers: { "Content-Type": "text/plain" },
-        });
-      },
-    },
+				return new Response(banner, {
+					headers: { "Content-Type": "text/plain" },
+				});
+			},
+		},
 
-    "/slack/events": {
-      async POST(request) {
-        return handleSlackEvent(request);
-      },
-    },
-    
-    "/upload": {
-      async POST(request) {
-        return handleUpload(request);
-      },
-    },
-    
-    "/health": {
-      async GET(request) {
-        return Response.json({ status: "ok" });
-      },
-    },
+		"/slack/events": {
+			async POST(request) {
+				return handleSlackEvent(request);
+			},
+		},
 
-    "/dashboard": dashboard,
+		"/upload": {
+			async POST(request) {
+				return handleUpload(request);
+			},
+		},
 
-    "/api/stats/overview": {
-      GET(request) {
-        const url = new URL(request.url);
-        const days = parseInt(url.searchParams.get("days") || "7");
-        const safeDays = Math.min(Math.max(days, 1), 365);
-        
-        return Response.json({
-          totalHits: getTotalHits(safeDays),
-          uniqueImages: getUniqueImages(safeDays),
-          topImages: getTopImages(safeDays, 20),
-        });
-      },
-    },
+		"/health": {
+			async GET(request) {
+				return Response.json({ status: "ok" });
+			},
+		},
 
-    "/api/stats/traffic": {
-      GET(request) {
-        const url = new URL(request.url);
-        const startParam = url.searchParams.get("start");
-        const endParam = url.searchParams.get("end");
-        
-        if (startParam && endParam) {
-          // Zoom mode: specific time range
-          const start = parseInt(startParam, 10);
-          const end = parseInt(endParam, 10);
-          const spanDays = (end - start) / 86400;
-          
-          // Use span as "days" parameter, pass end time
-          return Response.json(getTraffic(spanDays, end));
-        }
-        
-        // Normal mode: last N days
-        const days = parseInt(url.searchParams.get("days") || "7", 10);
-        const safeDays = Math.min(Math.max(days, 1), 365);
-        
-        return Response.json(getTraffic(safeDays));
-      },
-    },
+		"/dashboard": dashboard,
 
-    "/api/stats/image/:key": {
-      GET(request) {
-        const imageKey = request.params.key;
-        const url = new URL(request.url);
-        const days = parseInt(url.searchParams.get("days") || "30");
-        const safeDays = Math.min(Math.max(days, 1), 365);
-        
-        return Response.json(getStats(imageKey, safeDays));
-      },
-    },
-    
-    "/i/:key": {
-      async GET(request) {
-        const imageKey = request.params.key;
-        if (!imageKey) {
-          return new Response("Not found", { status: 404 });
-        }
+		"/api/stats/overview": {
+			GET(request) {
+				const url = new URL(request.url);
+				const days = parseInt(url.searchParams.get("days") || "7");
+				const safeDays = Math.min(Math.max(days, 1), 365);
 
-        recordHit(imageKey);
+				return Response.json({
+					totalHits: getTotalHits(safeDays),
+					uniqueImages: getUniqueImages(safeDays),
+					topImages: getTopImages(safeDays, 20),
+				});
+			},
+		},
 
-        if (!R2_PUBLIC_URL) {
-          return new Response("R2_PUBLIC_URL not configured", { status: 500 });
-        }
+		"/api/stats/traffic": {
+			GET(request) {
+				const url = new URL(request.url);
+				const startParam = url.searchParams.get("start");
+				const endParam = url.searchParams.get("end");
 
-        return Response.redirect(`${R2_PUBLIC_URL}/${imageKey}`, 307);
-      },
-    },
-  },
-  
-  // Fallback for unmatched routes
-  async fetch(request) {
-    return new Response("Not found", { status: 404 });
-  },
+				if (startParam && endParam) {
+					// Zoom mode: specific time range
+					const start = parseInt(startParam, 10);
+					const end = parseInt(endParam, 10);
+					const spanDays = (end - start) / 86400;
+
+					// Use span as "days" parameter, pass end time
+					return Response.json(getTraffic(spanDays, end));
+				}
+
+				// Normal mode: last N days
+				const days = parseInt(url.searchParams.get("days") || "7", 10);
+				const safeDays = Math.min(Math.max(days, 1), 365);
+
+				return Response.json(getTraffic(safeDays));
+			},
+		},
+
+		"/api/stats/image/:key": {
+			GET(request) {
+				const imageKey = request.params.key;
+				const url = new URL(request.url);
+				const days = parseInt(url.searchParams.get("days") || "30");
+				const safeDays = Math.min(Math.max(days, 1), 365);
+
+				return Response.json(getStats(imageKey, safeDays));
+			},
+		},
+
+		"/i/:key": {
+			async GET(request) {
+				const imageKey = request.params.key;
+				if (!imageKey) {
+					return new Response("Not found", { status: 404 });
+				}
+
+				recordHit(imageKey);
+
+				if (!R2_PUBLIC_URL) {
+					return new Response("R2_PUBLIC_URL not configured", { status: 500 });
+				}
+
+				return Response.redirect(`${R2_PUBLIC_URL}/${imageKey}`, 307);
+			},
+		},
+	},
+
+	// Fallback for unmatched routes
+	async fetch(request) {
+		return new Response("Not found", { status: 404 });
+	},
 });
 
 async function handleUpload(request: Request) {
-  try {
-    // Check auth token
-    const authHeader = request.headers.get("Authorization");
-    if (!AUTH_TOKEN || authHeader !== `Bearer ${AUTH_TOKEN}`) {
-      return new Response("Unauthorized", { status: 401 });
-    }
+	try {
+		// Check auth token
+		const authHeader = request.headers.get("Authorization");
+		if (!AUTH_TOKEN || authHeader !== `Bearer ${AUTH_TOKEN}`) {
+			return new Response("Unauthorized", { status: 401 });
+		}
 
-    // Parse multipart form data
-    const formData = await request.formData();
-    const file = formData.get("file") as File;
-    
-    if (!file) {
-      return Response.json({ success: false, error: "No file provided" }, { status: 400 });
-    }
+		// Parse multipart form data
+		const formData = await request.formData();
+		const file = formData.get("file") as File;
 
-    // Check if preserveFormat is requested
-    const preserveFormat = formData.get("preserveFormat") === "true";
+		if (!file) {
+			return Response.json(
+				{ success: false, error: "No file provided" },
+				{ status: 400 },
+			);
+		}
 
-    // Read file buffer
-    const originalBuffer = Buffer.from(await file.arrayBuffer());
-    const contentType = file.type || "image/jpeg";
+		// Check if preserveFormat is requested
+		const preserveFormat = formData.get("preserveFormat") === "true";
 
-    // Optimize image
-    const { buffer: optimizedBuffer, contentType: newContentType } = await optimizeImage(originalBuffer, contentType, preserveFormat);
+		// Read file buffer
+		const originalBuffer = Buffer.from(await file.arrayBuffer());
+		const contentType = file.type || "image/jpeg";
 
-    // Upload to R2
-    const imageKey = await uploadImageToR2(optimizedBuffer, newContentType);
-    const url = `${PUBLIC_URL}/i/${imageKey}`;
+		// Optimize image
+		const { buffer: optimizedBuffer, contentType: newContentType } =
+			await optimizeImage(originalBuffer, contentType, preserveFormat);
 
-    return Response.json({ success: true, url });
-  } catch (error) {
-    console.error("Error handling upload:", error);
-    return Response.json({ success: false, error: "Upload failed" }, { status: 500 });
-  }
+		// Upload to R2
+		const imageKey = await uploadImageToR2(optimizedBuffer, newContentType);
+		const url = `${PUBLIC_URL}/i/${imageKey}`;
+
+		return Response.json({ success: true, url });
+	} catch (error) {
+		console.error("Error handling upload:", error);
+		return Response.json(
+			{ success: false, error: "Upload failed" },
+			{ status: 500 },
+		);
+	}
 }
 
 async function handleSlackEvent(request: Request) {
-  try {
-    const body = await request.text();
-    const payload = JSON.parse(body);
+	try {
+		const body = await request.text();
+		const payload = JSON.parse(body);
 
-    // URL verification challenge
-    if (payload.type === "url_verification") {
-      return new Response(JSON.stringify({ challenge: payload.challenge }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+		// URL verification challenge
+		if (payload.type === "url_verification") {
+			return new Response(JSON.stringify({ challenge: payload.challenge }), {
+				headers: { "Content-Type": "application/json" },
+			});
+		}
 
-    // Handle file message events
-    if (payload.type === "event_callback" && payload.event?.type === "message") {
-      const event = payload.event;
+		// Handle file message events
+		if (
+			payload.type === "event_callback" &&
+			payload.event?.type === "message"
+		) {
+			const event = payload.event;
 
-      // Check for files
-      if (!event.files || event.files.length === 0) {
-        return new Response("OK", { status: 200 });
-      }
+			// Check for files
+			if (!event.files || event.files.length === 0) {
+				return new Response("OK", { status: 200 });
+			}
 
-      // Check if channel is allowed
-      if (ALLOWED_CHANNELS.length > 0 && !ALLOWED_CHANNELS.includes(event.channel)) {
-        return new Response("OK", { status: 200 });
-      }
+			// Check if channel is allowed
+			if (
+				ALLOWED_CHANNELS.length > 0 &&
+				!ALLOWED_CHANNELS.includes(event.channel)
+			) {
+				return new Response("OK", { status: 200 });
+			}
 
-      // Process files in background (don't await - return 200 immediately)
-      processSlackFiles(event).catch(console.error);
+			// Process files in background (don't await - return 200 immediately)
+			processSlackFiles(event).catch(console.error);
 
-      return new Response("OK", { status: 200 });
-    }
+			return new Response("OK", { status: 200 });
+		}
 
-    return new Response("OK", { status: 200 });
-  } catch (error) {
-    console.error("Error handling Slack event:", error);
-    return new Response("Internal Server Error", { status: 500 });
-  }
+		return new Response("OK", { status: 200 });
+	} catch (error) {
+		console.error("Error handling Slack event:", error);
+		return new Response("Internal Server Error", { status: 500 });
+	}
 }
 
 async function processSlackFiles(event: any) {
-  try {
-    // Check if message text contains "preserve"
-    const preserveFormat = event.text?.toLowerCase().includes("preserve") ?? false;
+	try {
+		// Check if message text contains "preserve"
+		const preserveFormat =
+			event.text?.toLowerCase().includes("preserve") ?? false;
 
-    // React with loading emoji (don't await - do it in parallel with downloads)
-    const loadingReaction = callSlackAPI("reactions.add", {
-      channel: event.channel,
-      timestamp: event.ts,
-      name: "spinny_fox",
-    });
+		// React with loading emoji (don't await - do it in parallel with downloads)
+		const loadingReaction = callSlackAPI("reactions.add", {
+			channel: event.channel,
+			timestamp: event.ts,
+			name: "spinny_fox",
+		});
 
-    // Process all files in parallel
-    const filePromises = event.files.map(async (file: any) => {
-      try {
-        console.log(`Processing file: ${file.name}`);
+		// Process all files in parallel
+		const filePromises = event.files.map(async (file: any) => {
+			try {
+				console.log(`Processing file: ${file.name}`);
 
-        // Download file from Slack
-        const fileResponse = await fetch(file.url_private, {
-          headers: {
-            Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-          },
-        });
+				// Download file from Slack
+				const fileResponse = await fetch(file.url_private, {
+					headers: {
+						Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+					},
+				});
 
-        if (!fileResponse.ok) {
-          throw new Error("Failed to download file from Slack");
-        }
+				if (!fileResponse.ok) {
+					throw new Error("Failed to download file from Slack");
+				}
 
-        const originalBuffer = Buffer.from(await fileResponse.arrayBuffer());
-        const contentType = file.mimetype || "image/jpeg";
+				const originalBuffer = Buffer.from(await fileResponse.arrayBuffer());
+				const contentType = file.mimetype || "image/jpeg";
 
-        console.log(`Downloaded ${file.name} (${originalBuffer.length} bytes)`);
+				console.log(`Downloaded ${file.name} (${originalBuffer.length} bytes)`);
 
-        // Optimize image (preserve format if message says "preserve")
-        const { buffer: optimizedBuffer, contentType: newContentType } = await optimizeImage(originalBuffer, contentType, preserveFormat);
+				// Optimize image (preserve format if message says "preserve")
+				const { buffer: optimizedBuffer, contentType: newContentType } =
+					await optimizeImage(originalBuffer, contentType, preserveFormat);
 
-        const savings = ((1 - optimizedBuffer.length / originalBuffer.length) * 100).toFixed(1);
-        if (preserveFormat) {
-          console.log(`Uploaded: ${originalBuffer.length} bytes (format preserved)`);
-        } else {
-          console.log(`Optimized: ${originalBuffer.length} → ${optimizedBuffer.length} bytes (${savings}% reduction)`);
-        }
+				const savings = (
+					(1 - optimizedBuffer.length / originalBuffer.length) *
+					100
+				).toFixed(1);
+				if (preserveFormat) {
+					console.log(
+						`Uploaded: ${originalBuffer.length} bytes (format preserved)`,
+					);
+				} else {
+					console.log(
+						`Optimized: ${originalBuffer.length} → ${optimizedBuffer.length} bytes (${savings}% reduction)`,
+					);
+				}
 
-        // Upload to R2
-        const imageKey = await uploadImageToR2(optimizedBuffer, newContentType);
-        console.log(`Uploaded to R2: ${imageKey}`);
+				// Upload to R2
+				const imageKey = await uploadImageToR2(optimizedBuffer, newContentType);
+				console.log(`Uploaded to R2: ${imageKey}`);
 
-        return `${PUBLIC_URL}/i/${imageKey}`;
-      } catch (error) {
-        console.error(`Error processing file ${file.name}:`, error);
-        return null;
-      }
-    });
+				return `${PUBLIC_URL}/i/${imageKey}`;
+			} catch (error) {
+				console.error(`Error processing file ${file.name}:`, error);
+				return null;
+			}
+		});
 
-    // Wait for all files to complete
-    const results = await Promise.all(filePromises);
-    const urls = results.filter((url): url is string => url !== null);
+		// Wait for all files to complete
+		const results = await Promise.all(filePromises);
+		const urls = results.filter((url): url is string => url !== null);
 
-    // Ensure loading reaction is done
-    await loadingReaction;
+		// Ensure loading reaction is done
+		await loadingReaction;
 
-    // Do all Slack API calls in parallel
-    const apiCalls: Promise<any>[] = [
-      // Remove loading reaction
-      callSlackAPI("reactions.remove", {
-        channel: event.channel,
-        timestamp: event.ts,
-        name: "spinny_fox",
-      }),
-    ];
+		// Do all Slack API calls in parallel
+		const apiCalls: Promise<any>[] = [
+			// Remove loading reaction
+			callSlackAPI("reactions.remove", {
+				channel: event.channel,
+				timestamp: event.ts,
+				name: "spinny_fox",
+			}),
+		];
 
-    if (urls.length > 0) {
-      apiCalls.push(
-        // Add success reaction
-        callSlackAPI("reactions.add", {
-          channel: event.channel,
-          timestamp: event.ts,
-          name: "good_move",
-        }),
-        // Post URLs in thread
-        callSlackAPI("chat.postMessage", {
-          channel: event.channel,
-          thread_ts: event.ts,
-          text: urls.join("\n"),
-        })
-      );
-    } else {
-      apiCalls.push(
-        // Add error reaction
-        callSlackAPI("reactions.add", {
-          channel: event.channel,
-          timestamp: event.ts,
-          name: "rac-concern",
-        })
-      );
-    }
+		if (urls.length > 0) {
+			apiCalls.push(
+				// Add success reaction
+				callSlackAPI("reactions.add", {
+					channel: event.channel,
+					timestamp: event.ts,
+					name: "yay-still",
+				}),
+				// Post URLs in thread
+				callSlackAPI("chat.postMessage", {
+					channel: event.channel,
+					thread_ts: event.ts,
+					text: urls.join("\n"),
+				}),
+			);
+		} else {
+			apiCalls.push(
+				// Add error reaction
+				callSlackAPI("reactions.add", {
+					channel: event.channel,
+					timestamp: event.ts,
+					name: "rac-concern",
+				}),
+			);
+		}
 
-    await Promise.all(apiCalls);
-  } catch (error) {
-    console.error("Error processing Slack files:", error);
+		await Promise.all(apiCalls);
+	} catch (error) {
+		console.error("Error processing Slack files:", error);
 
-    // Add error reaction
-    await callSlackAPI("reactions.add", {
-      channel: event.channel,
-      timestamp: event.ts,
-      name: "rac-concern",
-    }).catch(console.error);
-  }
+		// Add error reaction
+		await callSlackAPI("reactions.add", {
+			channel: event.channel,
+			timestamp: event.ts,
+			name: "rac-concern",
+		}).catch(console.error);
+	}
 }
 
 async function callSlackAPI(method: string, params: any) {
-  const response = await fetch(`https://slack.com/api/${method}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-    },
-    body: JSON.stringify(params),
-  });
+	const response = await fetch(`https://slack.com/api/${method}`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+		},
+		body: JSON.stringify(params),
+	});
 
-  const data = await response.json();
-  if (!data.ok) {
-    throw new Error(`Slack API error: ${data.error}`);
-  }
+	const data = await response.json();
+	if (!data.ok) {
+		throw new Error(`Slack API error: ${data.error}`);
+	}
 
-  return data;
+	return data;
 }
 
 console.log(`L4 Image CDN started on port ${server.port}`);
