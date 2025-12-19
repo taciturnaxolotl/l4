@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
+import { migrate, getMigrations } from "bun-sqlite-migrations";
 
 const DB_PATH = process.env.STATS_DB_PATH || "./data/stats.db";
 
@@ -15,30 +16,48 @@ db.exec("PRAGMA journal_mode = WAL");
 db.exec("PRAGMA synchronous = NORMAL"); // Safe with WAL, faster than FULL
 db.exec("PRAGMA busy_timeout = 5000");
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS image_stats (
-    image_key TEXT NOT NULL,
-    bucket_hour INTEGER NOT NULL,
-    hits INTEGER NOT NULL DEFAULT 1,
-    PRIMARY KEY (image_key, bucket_hour)
-  ) WITHOUT ROWID
+// Run migrations
+migrate(db, getMigrations("./migrations"));
+
+const increment10MinStmt = db.prepare(`
+  INSERT INTO image_stats_10min (image_key, bucket_10min, hits)
+  VALUES (?1, ?2, 1)
+  ON CONFLICT(image_key, bucket_10min) DO UPDATE SET hits = hits + 1
 `);
 
-db.exec(`
-  CREATE INDEX IF NOT EXISTS idx_stats_time 
-  ON image_stats(bucket_hour, image_key)
-`);
-
-const incrementStmt = db.prepare(`
+const incrementHourStmt = db.prepare(`
   INSERT INTO image_stats (image_key, bucket_hour, hits)
   VALUES (?1, ?2, 1)
   ON CONFLICT(image_key, bucket_hour) DO UPDATE SET hits = hits + 1
 `);
 
+// Delete old 10-minute data (older than 24 hours)
+const cleanup10MinStmt = db.prepare(`
+  DELETE FROM image_stats_10min WHERE bucket_10min < ?
+`);
+
+// Track last cleanup time
+let lastCleanup = 0;
+
 export function recordHit(imageKey: string): void {
   const now = Math.floor(Date.now() / 1000);
-  const bucketHour = now - (now % 3600);
-  incrementStmt.run(imageKey, bucketHour);
+  const bucket10Min = now - (now % 600); // 10 minutes = 600 seconds
+  const bucketHour = now - (now % 3600); // 1 hour = 3600 seconds
+  
+  // Write to both tables
+  increment10MinStmt.run(imageKey, bucket10Min);
+  incrementHourStmt.run(imageKey, bucketHour);
+  
+  // Clean up old 10-minute data every 10 minutes
+  if (now - lastCleanup >= 600) {
+    const dayAgo = now - 86400;
+    const cleanupBucket = dayAgo - (dayAgo % 600);
+    
+    // Delete 10-minute data older than 24 hours
+    cleanup10MinStmt.run(cleanupBucket);
+    
+    lastCleanup = now;
+  }
 }
 
 export function getStats(imageKey: string, sinceDays: number = 30) {
@@ -54,13 +73,18 @@ export function getStats(imageKey: string, sinceDays: number = 30) {
 
 export function getTopImages(sinceDays: number = 7, limit: number = 10) {
   const since = Math.floor(Date.now() / 1000) - sinceDays * 86400;
+  
+  // Combine data from both hourly and 10-minute tables
   return db
     .prepare(
-      `SELECT image_key, SUM(hits) as total 
-       FROM image_stats WHERE bucket_hour >= ? 
+      `SELECT image_key, SUM(hits) as total FROM (
+         SELECT image_key, hits FROM image_stats WHERE bucket_hour >= ?
+         UNION ALL
+         SELECT image_key, hits FROM image_stats_10min WHERE bucket_10min >= ?
+       ) 
        GROUP BY image_key ORDER BY total DESC LIMIT ?`
     )
-    .all(since, limit);
+    .all(since, since, limit);
 }
 
 export function getTotalHits(sinceDays: number = 30) {
@@ -103,6 +127,21 @@ export function getDailyTraffic(sinceDays: number = 30) {
 
 export function getTraffic(sinceDays: number = 7) {
   const since = Math.floor(Date.now() / 1000) - sinceDays * 86400;
+  
+  // For <= 1 day, use 10-minute data if available
+  if (sinceDays <= 1) {
+    const data = db
+      .prepare(
+        `SELECT bucket_10min as bucket, SUM(hits) as hits 
+         FROM image_stats_10min WHERE bucket_10min >= ? 
+         GROUP BY bucket_10min ORDER BY bucket_10min`
+      )
+      .all(since) as { bucket: number; hits: number }[];
+    
+    if (data.length > 0) {
+      return { granularity: "10min", data };
+    }
+  }
   
   // Get the actual time range of available data
   const rangeResult = db
