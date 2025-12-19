@@ -7,7 +7,52 @@
   <link rel="stylesheet" href="./dashboard.css">
 </head>
 <body>
-  <div id="root"></div>
-  <script type="module" src="./dashboard.tsx"></script>
+  <div class="dashboard">
+    <header>
+      <h1>L4 Stats</h1>
+      <div class="time-selector">
+        <button data-days="1">24h</button>
+        <button data-days="7" class="active">7d</button>
+        <button data-days="30">30d</button>
+        <button data-days="90">90d</button>
+        <button data-days="365">1y</button>
+      </div>
+    </header>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="label">Total Hits</div>
+        <div class="value" id="total-hits">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Unique Images</div>
+        <div class="value" id="unique-images">—</div>
+      </div>
+    </div>
+
+    <div class="top-images">
+      <h2>Top Images</h2>
+      <div class="image-list" id="image-list">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <h2>Traffic Overview</h2>
+      <div class="chart-wrapper" id="chart"></div>
+      <p class="chart-hint">Drag to zoom, double-click to reset</p>
+    </div>
+
+    <footer>
+      <span>Made with <span class="heart">♥</span> by
+        <a href="https://dunkirk.sh" target="_blank" rel="noopener noreferrer">Kieran Klukas</a>
+      </span>
+      <a class="repo-link" href="https://tangled.sh/@kieran.dunkirk.sh/l4" target="_blank" rel="noopener noreferrer">
+        View source on Tangled
+      </a>
+    </footer>
+  </div>
+
+  <script type="module" src="./dashboard.ts"></script>
 </body>
 </html>

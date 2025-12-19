@@ -156,8 +156,11 @@ const server = Bun.serve({
 
         recordHit(imageKey);
 
-        const r2PublicUrl = `${R2_PUBLIC_URL}/${imageKey}`;
-        return Response.redirect(r2PublicUrl, 307);
+        if (!R2_PUBLIC_URL) {
+          return new Response("R2_PUBLIC_URL not configured", { status: 500 });
+        }
+
+        return Response.redirect(`${R2_PUBLIC_URL}/${imageKey}`, 307);
       },
     },
   },
