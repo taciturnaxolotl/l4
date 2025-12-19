@@ -11,23 +11,23 @@ import {
 } from "./stats";
 
 // Configuration from env
-const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL!;
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "";
 const PUBLIC_URL = process.env.PUBLIC_URL || "http://localhost:3000";
 const AUTH_TOKEN = process.env.AUTH_TOKEN;
 
 // S3 configuration
 const S3_ACCESS_KEY_ID =
-	process.env.S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID!;
+	process.env.S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID || "";
 const S3_SECRET_ACCESS_KEY =
-	process.env.S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY!;
+	process.env.S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY || "";
 const S3_BUCKET =
 	process.env.S3_BUCKET || process.env.AWS_BUCKET || "l4-images";
-const S3_ENDPOINT = process.env.S3_ENDPOINT || process.env.AWS_ENDPOINT!;
+const S3_ENDPOINT = process.env.S3_ENDPOINT || process.env.AWS_ENDPOINT || "";
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || "auto";
 
 // Slack configuration
-const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN!;
-const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET!;
+const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN || "";
+const _SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET || "";
 const ALLOWED_CHANNELS =
 	process.env.ALLOWED_CHANNELS?.split(",").map((c) => c.trim()) || [];
 
@@ -126,7 +126,7 @@ const server = Bun.serve({
 		},
 
 		"/health": {
-			async GET(request) {
+			async GET(_request) {
 				return Response.json({ status: "ok" });
 			},
 		},
@@ -136,7 +136,7 @@ const server = Bun.serve({
 		"/api/stats/overview": {
 			GET(request) {
 				const url = new URL(request.url);
-				const days = parseInt(url.searchParams.get("days") || "7");
+				const days = parseInt(url.searchParams.get("days") || "7", 10);
 				const safeDays = Math.min(Math.max(days, 1), 365);
 
 				return Response.json({
@@ -175,7 +175,7 @@ const server = Bun.serve({
 			GET(request) {
 				const imageKey = request.params.key;
 				const url = new URL(request.url);
-				const days = parseInt(url.searchParams.get("days") || "30");
+				const days = parseInt(url.searchParams.get("days") || "30", 10);
 				const safeDays = Math.min(Math.max(days, 1), 365);
 
 				return Response.json(getStats(imageKey, safeDays));
@@ -201,7 +201,7 @@ const server = Bun.serve({
 	},
 
 	// Fallback for unmatched routes
-	async fetch(request) {
+	async fetch(_request) {
 		return new Response("Not found", { status: 404 });
 	},
 });
@@ -295,7 +295,20 @@ async function handleSlackEvent(request: Request) {
 	}
 }
 
-async function processSlackFiles(event: any) {
+interface SlackFile {
+	url_private: string;
+	name: string;
+	mimetype: string;
+}
+
+interface SlackMessageEvent {
+	text?: string;
+	files?: SlackFile[];
+	channel: string;
+	ts: string;
+}
+
+async function processSlackFiles(event: SlackMessageEvent) {
 	try {
 		// Check if message text contains "preserve"
 		const preserveFormat =
@@ -309,7 +322,7 @@ async function processSlackFiles(event: any) {
 		});
 
 		// Process all files in parallel
-		const filePromises = event.files.map(async (file: any) => {
+		const filePromises = (event.files || []).map(async (file) => {
 			try {
 				console.log(`Processing file: ${file.name}`);
 
@@ -366,7 +379,7 @@ async function processSlackFiles(event: any) {
 		await loadingReaction;
 
 		// Do all Slack API calls in parallel
-		const apiCalls: Promise<any>[] = [
+		const apiCalls: Promise<unknown>[] = [
 			// Remove loading reaction
 			callSlackAPI("reactions.remove", {
 				channel: event.channel,
@@ -414,7 +427,7 @@ async function processSlackFiles(event: any) {
 	}
 }
 
-async function callSlackAPI(method: string, params: any) {
+async function callSlackAPI(method: string, params: Record<string, unknown>) {
 	const response = await fetch(`https://slack.com/api/${method}`, {
 		method: "POST",
 		headers: {
