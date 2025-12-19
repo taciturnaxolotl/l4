@@ -1,62 +1,65 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>L4 Stats Dashboard</title>
+  <title>The L4 Cache</title>
   <meta name="description" content="Traffic statistics dashboard for L4 Image CDN">
-  
+
   <!-- Favicon -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧳</text></svg>">
-  
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧳</text></svg>">
+
   <!-- Open Graph -->
-  <meta property="og:title" content="L4 Stats Dashboard">
-  <meta property="og:description" content="Traffic statistics dashboard for L4 Image CDN">
+  <meta property="og:title" content="The L4 Cache">
+  <meta property="og:description" content="traffic statistics for the l4 cache">
   <meta property="og:type" content="website">
-  
+
   <!-- Twitter -->
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="L4 Stats Dashboard">
-  <meta name="twitter:description" content="Traffic statistics dashboard for L4 Image CDN">
-  
+  <meta name="twitter:title" content="The L4 Cache">
+  <meta name="twitter:description" content="traffic statistics for the l4 cache">
+
   <link rel="stylesheet" href="./dashboard.css">
 </head>
+
 <body>
-  <div class="dashboard">
+  <main class="dashboard">
     <header>
-      <h1>L4 Stats</h1>
-      <div class="time-selector">
+      <h1>The L4 Cache</h1>
+      <nav class="time-selector" aria-label="Time range selection">
         <button data-days="1">24h</button>
         <button data-days="7" class="active">7d</button>
         <button data-days="30">30d</button>
         <button data-days="90">90d</button>
         <button data-days="365">1y</button>
-      </div>
+      </nav>
     </header>
 
-    <div class="stats-grid">
-      <div class="stat-card">
+    <section class="stats-grid" aria-label="Statistics summary">
+      <article class="stat-card">
         <div class="label">Total Hits</div>
         <div class="value" id="total-hits">—</div>
-      </div>
-      <div class="stat-card">
+      </article>
+      <article class="stat-card">
         <div class="label">Unique Images</div>
         <div class="value" id="unique-images">—</div>
-      </div>
-    </div>
+      </article>
+    </section>
 
-    <div class="chart-container">
+    <section class="chart-container">
       <h2>Traffic Overview</h2>
-      <div class="chart-wrapper" id="chart"></div>
+      <div class="chart-wrapper" id="chart" role="img" aria-label="Traffic over time chart"></div>
       <p class="chart-hint">Drag to zoom, double-click to reset</p>
-    </div>
+    </section>
 
-    <div class="top-images">
+    <section class="top-images">
       <h2>Top Images</h2>
       <div class="image-list" id="image-list">
         <div class="loading">Loading...</div>
       </div>
-    </div>
+    </section>
 
     <footer>
       <span>Made with <span class="heart">♥</span> by
@@ -66,8 +69,9 @@
         View source on Tangled
       </a>
     </footer>
-  </div>
+  </main>
 
   <script type="module" src="./dashboard.ts"></script>
 </body>
+
 </html>
