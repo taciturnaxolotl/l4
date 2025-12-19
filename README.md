@@ -4,35 +4,17 @@ This is my own image cdn built on cloudflare r2 mainly so I can have fast optimi
 
 ## Docs
 
-```bash
-bun install
-wrangler r2 bucket create l4-images
-```
-
-add the secrets
-
-```bash
-wrangler secret put SLACK_BOT_TOKEN
-wrangler secret put SLACK_SIGNING_SECRET
-wrangler secret put AUTH_TOKEN
-```
-
-```bash
-bun run deploy
-```
-
-## Development
-
-```bash
-bun run dev
-```
-
-Create `.dev.vars` for local development:
+Create `.env`:
 
 ```env
 SLACK_BOT_TOKEN=token
 SLACK_SIGNING_SECRET=secret
 AUTH_TOKEN=token
+```
+
+```bash
+bun install
+bun start
 ```
 
 <p align="center">
