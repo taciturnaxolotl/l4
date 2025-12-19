@@ -153,96 +153,15 @@ async function handleImageRequest(
 		return new Response("Not found", { status: 404 });
 	}
 
-	// Prevent infinite loops
-	if (/image-resizing/.test(request.headers.get("via") || "")) {
-		const object = await env.IMAGES.get(imageKey);
-		if (!object) {
-			return new Response("Not found", { status: 404 });
-		}
-		return new Response(object.body, {
-			headers: {
-				"Content-Type":
-					object.httpMetadata?.contentType || "application/octet-stream",
-				"Cache-Control": "public, max-age=31536000",
-			},
-		});
-	}
-
-	// Parse transformation params
-	const width = url.searchParams.get("w");
-	const height = url.searchParams.get("h");
-	const quality = url.searchParams.get("q") || "85";
-	const format = url.searchParams.get("f") || "auto";
-	const fit = url.searchParams.get("fit") || "scale-down";
-
-	// Check cache first
-	const cacheKey = new Request(url.toString(), request);
-	const cache = caches.default;
-	let response = await cache.match(cacheKey);
-	if (response) {
-		return response;
-	}
-
-	// Fetch from R2
-	const object = await env.IMAGES.get(imageKey);
+	// Verify object exists before redirecting
+	const object = await env.IMAGES.head(imageKey);
 	if (!object) {
 		return new Response("Not found", { status: 404 });
 	}
 
-	// In local dev, Cloudflare image transformations don't work
-	// So we just serve the original image
-	const isLocalDev =
-		url.hostname === "localhost" || url.hostname.includes("127.0.0.1");
-
-	if (isLocalDev) {
-		const headers = new Headers();
-		headers.set(
-			"Content-Type",
-			object.httpMetadata?.contentType || "image/png",
-		);
-		headers.set("Cache-Control", "public, max-age=31536000");
-		return new Response(object.body, { headers });
-	}
-
-	// Build image transformation options
-	const imageOptions: any = {
-		quality: parseInt(quality),
-		format,
-		fit,
-	};
-
-	if (width) imageOptions.width = parseInt(width);
-	if (height) imageOptions.height = parseInt(height);
-
-	// Determine format based on Accept header if auto
-	if (format === "auto") {
-		const accept = request.headers.get("accept") || "";
-		if (/image\/avif/.test(accept)) {
-			imageOptions.format = "avif";
-		} else if (/image\/webp/.test(accept)) {
-			imageOptions.format = "webp";
-		}
-	}
-
-	// Fetch and transform
-	const imageResponse = await fetch(request.url, {
-		cf: {
-			image: imageOptions,
-		},
-	});
-
-	// Clone response with cache headers
-	response = new Response(imageResponse.body, imageResponse);
-	response.headers.set(
-		"Cache-Control",
-		"public, max-age=31536000, s-maxage=86400",
-	);
-	response.headers.set("Vary", "Accept");
-
-	// Cache asynchronously
-	ctx.waitUntil(cache.put(cacheKey, response.clone()));
-
-	return response;
+	// Redirect to R2 public URL - much more efficient than proxying
+	const r2PublicUrl = `${env.R2_PUBLIC_URL}/${imageKey}`;
+	return Response.redirect(r2PublicUrl, 307);
 }
 
 async function handleImageUpload(
@@ -308,5 +227,6 @@ interface Env extends SlackEdgeAppEnv {
 	IMAGES: R2Bucket;
 	AUTH_TOKEN: string;
 	PUBLIC_URL: string;
+	R2_PUBLIC_URL: string;
 	ALLOWED_CHANNELS?: string;
 }

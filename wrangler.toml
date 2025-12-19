@@ -12,6 +12,7 @@ preview_bucket_name = "l4-images"
 
 [vars]
 PUBLIC_URL = "https://l4.dunkirk.sh"
+R2_PUBLIC_URL = "https://pub-3a6e58e5ca3b4847b3247131f8e7b413.r2.dev"
 ALLOWED_CHANNELS = "C08EKUY7QVA"  # Comma-separated channel IDs
 
 # Set secrets:
