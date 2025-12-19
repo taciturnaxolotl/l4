@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { nanoid } from "nanoid";
+import { recordHit } from "./stats";
 
 // Configuration from env
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL!;
@@ -82,8 +83,8 @@ const server = Bun.serve({
           return new Response("Not found", { status: 404 });
         }
 
-        // Skip exists check - redirect directly, R2 will handle 404s
-        // This saves ~50-100ms per request
+        recordHit(imageKey);
+
         const r2PublicUrl = `${R2_PUBLIC_URL}/${imageKey}`;
         return Response.redirect(r2PublicUrl, 307);
       },

@@ -5,3 +5,4 @@ dist/
 .env
 *.log
 bun.lock
+data/
