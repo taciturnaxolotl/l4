@@ -7,16 +7,14 @@ This is my own image cdn built on cloudflare r2 mainly so I can have fast optimi
 ```bash
 bun install
 wrangler r2 bucket create l4-images
-wrangler kv namespace create L4
 ```
 
-Update `wrangler.toml` with the KV namespace ID and set `HOST` to your domain as well as `INDIKO_URL` to your Indiko instance
-
-### Production
+add the secrets
 
 ```bash
-wrangler secret put INDIKO_CLIENT_ID
-wrangler secret put INDIKO_CLIENT_SECRET
+wrangler secret put SLACK_BOT_TOKEN
+wrangler secret put SLACK_SIGNING_SECRET
+wrangler secret put AUTH_TOKEN
 ```
 
 ```bash
@@ -32,127 +30,9 @@ bun run dev
 Create `.dev.vars` for local development:
 
 ```env
-INDIKO_CLIENT_ID=your_client_id
-INDIKO_CLIENT_SECRET=your_client_secret
-```
-
-## CLI Usage
-
-### Install CLI
-
-```bash
-cd cli
-bun install
-bun run build
-npm link
-```
-
-### Configure
-
-```bash
-l4 config --api-key <your-api-key> --url https://l4.yourdomain.com
-```
-
-### Upload Image
-
-```bash
-l4 upload image.jpg
-l4 upload image.jpg --key custom-name.jpg
-```
-
-### List Images
-
-```bash
-l4 list
-l4 list --limit 50
-```
-
-### Delete Image
-
-```bash
-l4 delete image-key.jpg
-```
-
-### Get Image URL
-
-```bash
-l4 url image.jpg
-l4 url image.jpg --width 800 --format webp --quality 85
-```
-
-## Image Transformations
-
-Images are served via `/i/:key` with optional query parameters:
-
-- `w` - Width (pixels)
-- `h` - Height (pixels)
-- `f` - Format (`auto`, `webp`, `avif`, `jpeg`)
-- `q` - Quality (1-100, default 85)
-- `fit` - Fit mode (`scale-down`, `contain`, `cover`, `crop`, `pad`)
-
-### Examples
-
-```
-/i/photo.jpg?w=800&f=webp
-/i/photo.jpg?w=400&h=400&fit=cover&q=90
-/i/photo.jpg?f=auto
-```
-
-## API Endpoints
-
-### Authentication
-
-- `GET /login` - Login page
-- `GET /api/login` - Initiate OAuth
-- `GET /api/callback` - OAuth callback
-- `POST /api/logout` - Logout
-- `GET /api/me` - Get current user
-
-### Images
-
-- `POST /api/upload` - Upload image (multipart/form-data)
-- `GET /api/images` - List images
-- `DELETE /api/images/:key` - Delete image
-- `GET /i/:key` - Serve image (public)
-
-### API Keys
-
-- `GET /api/keys` - List API keys
-- `POST /api/keys` - Create API key
-- `DELETE /api/keys/:id` - Delete API key
-
-## Architecture
-
-```
-┌─────────────┐
-│   Browser   │
-└──────┬──────┘
-       │
-       ├─── HTML/JS (Indiko OAuth)
-       │
-       ├─── Upload/Manage Images
-       │
-       v
-┌─────────────────┐
-│ Cloudflare      │
-│ Workers         │
-│                 │
-│ - Auth          │
-│ - Transform     │
-│ - Cache         │
-└────────┬────────┘
-         │
-         ├─── Session/Metadata
-         v
-    ┌────────┐
-    │   KV   │
-    └────────┘
-         │
-         ├─── Original Images
-         v
-    ┌────────┐
-    │   R2   │
-    └────────┘
+SLACK_BOT_TOKEN=token
+SLACK_SIGNING_SECRET=secret
+AUTH_TOKEN=token
 ```
 
 <p align="center">

@@ -10,24 +10,10 @@ binding = "IMAGES"
 bucket_name = "l4-images"
 preview_bucket_name = "l4-images"
 
-[[kv_namespaces]]
-binding = "L4"
-id = "dee452afc1134a58aee704dfda12a703"
-
-[[rules]]
-type = "Text"
-globs = ["**/*.html"]
-fallthrough = false
-
 [vars]
-HOST = "https://l4.dunkirk.sh"
-INDIKO_URL = "https://indiko.dunkirk.sh"
+PUBLIC_URL = "https://l4.dunkirk.sh"
 
-# Environment variables
-# For local development, set in .dev.vars file:
-# INDIKO_CLIENT_ID=your_client_id
-# INDIKO_CLIENT_SECRET=your_client_secret
-#
-# For production, set as secrets:
-# wrangler secret put INDIKO_CLIENT_ID
-# wrangler secret put INDIKO_CLIENT_SECRET
+# Set secrets:
+# wrangler secret put AUTH_TOKEN
+# wrangler secret put SLACK_BOT_TOKEN
+# wrangler secret put SLACK_SIGNING_SECRET

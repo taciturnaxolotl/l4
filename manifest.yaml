@@ -1,0 +1,25 @@
+display_information:
+  name: Tacy
+  description: Automatically uploads files to R2 and provides public URLs
+  background_color: "#16302b"
+features:
+  bot_user:
+    display_name: Tacy
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - files:read
+      - reactions:write
+      - chat:write
+settings:
+  event_subscriptions:
+    request_url: https://l4.dunkirk.sh/slack/events
+    bot_events:
+      - message.channels
+      - message.groups
+      - message.im
+      - message.mpim
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

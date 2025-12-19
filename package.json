@@ -17,6 +17,7 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "nanoid": "^5.1.6"
+    "nanoid": "^5.1.6",
+    "slack-edge": "^1.3.12"
   }
 }
