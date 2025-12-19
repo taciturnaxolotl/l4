@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
-import { SlackApp, SlackEdgeAppEnv } from "slack-edge";
+import { SlackApp, type SlackEdgeAppEnv } from "slack-edge";
+import { optimizeImage } from "wasm-image-optimization";
 
 export default {
 	async fetch(
@@ -27,8 +28,12 @@ export default {
 				}
 
 				// Check if channel is allowed
-				const allowedChannels = env.ALLOWED_CHANNELS?.split(",").map(c => c.trim()) || [];
-				if (allowedChannels.length > 0 && !allowedChannels.includes(payload.channel)) {
+				const allowedChannels =
+					env.ALLOWED_CHANNELS?.split(",").map((c) => c.trim()) || [];
+				if (
+					allowedChannels.length > 0 &&
+					!allowedChannels.includes(payload.channel)
+				) {
 					return;
 				}
 
@@ -56,21 +61,12 @@ export default {
 
 						const fileBlob = await fileResponse.blob();
 
-						// Determine extension
-						const extension =
-							file.name?.split(".").pop() ||
-							file.filetype ||
-							"jpg";
-
-						// Generate random key
-						const imageKey = `${nanoid(12)}.${extension}`;
-
-						// Upload to R2
-						await env.IMAGES.put(imageKey, fileBlob.stream(), {
-							httpMetadata: {
-								contentType: file.mimetype || "application/octet-stream",
-							},
-						});
+						// Optimize and upload to R2
+						const { key: imageKey } = await optimizeAndUpload(
+							env,
+							fileBlob,
+							file.name || "image.jpg",
+						);
 
 						const imageUrl = `${env.PUBLIC_URL}/i/${imageKey}`;
 						urls.push(imageUrl);
@@ -87,7 +83,7 @@ export default {
 					await context.client.reactions.add({
 						channel: payload.channel,
 						timestamp: payload.ts,
-						name: "good_move",
+						name: "yay-still",
 					});
 
 					// Post URLs in thread
@@ -195,16 +191,8 @@ async function handleImageUpload(
 			});
 		}
 
-		// Generate random key
-		const extension = file.name.split(".").pop() || "jpg";
-		const imageKey = `${nanoid(12)}.${extension}`;
-
-		// Upload to R2
-		await env.IMAGES.put(imageKey, file.stream(), {
-			httpMetadata: {
-				contentType,
-			},
-		});
+		// Optimize and upload
+		const { key: imageKey } = await optimizeAndUpload(env, file, file.name);
 
 		const imageUrl = `${new URL(request.url).origin}/i/${imageKey}`;
 
@@ -229,4 +217,35 @@ interface Env extends SlackEdgeAppEnv {
 	PUBLIC_URL: string;
 	R2_PUBLIC_URL: string;
 	ALLOWED_CHANNELS?: string;
+}
+
+// Helper to optimize images before uploading
+async function optimizeAndUpload(
+	env: Env,
+	imageBlob: Blob,
+	originalFilename: string,
+): Promise<{ key: string; contentType: string }> {
+	// Convert blob to ArrayBuffer
+	const imageBuffer = await imageBlob.arrayBuffer();
+
+	// Optimize image - convert to WebP at 85% quality
+	const optimized = await optimizeImage({
+		image: imageBuffer,
+		width: undefined, // Keep original dimensions
+		height: undefined,
+		format: "webp",
+		quality: 85,
+	});
+
+	// Generate random key with .webp extension
+	const imageKey = `${nanoid(12)}.webp`;
+
+	// Upload optimized version to R2
+	await env.IMAGES.put(imageKey, optimized, {
+		httpMetadata: {
+			contentType: "image/webp",
+		},
+	});
+
+	return { key: imageKey, contentType: "image/webp" };
 }
