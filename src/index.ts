@@ -66,8 +66,8 @@ const server = Bun.serve({
     },
     
     "/i/:key": {
-      async GET(request, { params }) {
-        const imageKey = params.key;
+      async GET(request) {
+        const imageKey = request.params.key;
         if (!imageKey) {
           return new Response("Not found", { status: 404 });
         }
