@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { nanoid } from "nanoid";
-import { recordHit, getTopImages, getTotalHits, getHourlyTraffic, getDailyTraffic, getStats } from "./stats";
+import { recordHit, getTopImages, getTotalHits, getUniqueImages, getTraffic, getStats } from "./stats";
 import dashboard from "./dashboard.html";
 
 // Configuration from env
@@ -117,6 +117,7 @@ const server = Bun.serve({
         
         return Response.json({
           totalHits: getTotalHits(safeDays),
+          uniqueImages: getUniqueImages(safeDays),
           topImages: getTopImages(safeDays, 20),
         });
       },
@@ -128,11 +129,7 @@ const server = Bun.serve({
         const days = parseInt(url.searchParams.get("days") || "7");
         const safeDays = Math.min(Math.max(days, 1), 365);
         
-        if (safeDays <= 7) {
-          return Response.json({ granularity: "hourly", data: getHourlyTraffic(safeDays) });
-        } else {
-          return Response.json({ granularity: "daily", data: getDailyTraffic(safeDays) });
-        }
+        return Response.json(getTraffic(safeDays));
       },
     },
 

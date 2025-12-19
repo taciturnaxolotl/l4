@@ -4,6 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>L4 Stats Dashboard</title>
+  <meta name="description" content="Traffic statistics dashboard for L4 Image CDN">
+  
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧳</text></svg>">
+  
+  <!-- Open Graph -->
+  <meta property="og:title" content="L4 Stats Dashboard">
+  <meta property="og:description" content="Traffic statistics dashboard for L4 Image CDN">
+  <meta property="og:type" content="website">
+  
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="L4 Stats Dashboard">
+  <meta name="twitter:description" content="Traffic statistics dashboard for L4 Image CDN">
+  
   <link rel="stylesheet" href="./dashboard.css">
 </head>
 <body>
@@ -30,17 +45,17 @@
       </div>
     </div>
 
+    <div class="chart-container">
+      <h2>Traffic Overview</h2>
+      <div class="chart-wrapper" id="chart"></div>
+      <p class="chart-hint">Drag to zoom, double-click to reset</p>
+    </div>
+
     <div class="top-images">
       <h2>Top Images</h2>
       <div class="image-list" id="image-list">
         <div class="loading">Loading...</div>
       </div>
-    </div>
-
-    <div class="chart-container">
-      <h2>Traffic Overview</h2>
-      <div class="chart-wrapper" id="chart"></div>
-      <p class="chart-hint">Drag to zoom, double-click to reset</p>
     </div>
 
     <footer>

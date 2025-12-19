@@ -71,6 +71,14 @@ export function getTotalHits(sinceDays: number = 30) {
   return result?.total ?? 0;
 }
 
+export function getUniqueImages(sinceDays: number = 30) {
+  const since = Math.floor(Date.now() / 1000) - sinceDays * 86400;
+  const result = db
+    .prepare(`SELECT COUNT(DISTINCT image_key) as count FROM image_stats WHERE bucket_hour >= ?`)
+    .get(since) as { count: number | null };
+  return result?.count ?? 0;
+}
+
 export function getHourlyTraffic(sinceDays: number = 7) {
   const since = Math.floor(Date.now() / 1000) - sinceDays * 86400;
   return db
@@ -91,4 +99,50 @@ export function getDailyTraffic(sinceDays: number = 30) {
        GROUP BY bucket_day ORDER BY bucket_day`
     )
     .all(since) as { bucket_day: number; hits: number }[];
+}
+
+export function getTraffic(sinceDays: number = 7) {
+  const since = Math.floor(Date.now() / 1000) - sinceDays * 86400;
+  
+  // Get the actual time range of available data
+  const rangeResult = db
+    .prepare(
+      `SELECT MIN(bucket_hour) as min_time, MAX(bucket_hour) as max_time 
+       FROM image_stats WHERE bucket_hour >= ?`
+    )
+    .get(since) as { min_time: number | null; max_time: number | null };
+  
+  if (!rangeResult.min_time || !rangeResult.max_time) {
+    return { granularity: "hourly", data: [] };
+  }
+  
+  // Calculate actual data span in days
+  const actualSpanSeconds = rangeResult.max_time - rangeResult.min_time;
+  const actualSpanDays = actualSpanSeconds / 86400;
+  
+  // Scale granularity based on actual data span
+  // <= 7 days: hourly
+  // > 7 days: bucket size = floor(days / 7) hours
+  
+  let bucketSize: number;
+  let bucketLabel: string;
+  
+  if (actualSpanDays <= 7) {
+    bucketSize = 3600; // 1 hour
+    bucketLabel = "hourly";
+  } else {
+    const hourMultiplier = Math.floor(actualSpanDays / 7);
+    bucketSize = 3600 * hourMultiplier;
+    bucketLabel = `${hourMultiplier}hourly`;
+  }
+  
+  const data = db
+    .prepare(
+      `SELECT (bucket_hour / ?1) * ?1 as bucket, SUM(hits) as hits 
+       FROM image_stats WHERE bucket_hour >= ?2 
+       GROUP BY bucket ORDER BY bucket`
+    )
+    .all(bucketSize, since) as { bucket: number; hits: number }[];
+  
+  return { granularity: bucketLabel, data };
 }

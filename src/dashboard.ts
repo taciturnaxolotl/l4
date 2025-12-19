@@ -3,12 +3,13 @@ import "uplot/dist/uPlot.min.css";
 import "./dashboard.css";
 
 interface TrafficData {
-  granularity: "hourly" | "daily";
-  data: Array<{ bucket_hour?: number; bucket_day?: number; hits: number }>;
+  granularity: string;
+  data: Array<{ bucket?: number; bucket_hour?: number; bucket_day?: number; hits: number }>;
 }
 
 interface OverviewData {
   totalHits: number;
+  uniqueImages: number;
   topImages: Array<{ image_key: string; total: number }>;
 }
 
@@ -78,7 +79,7 @@ class Dashboard {
 
   private renderOverview(data: OverviewData) {
     this.totalHitsEl.textContent = formatNumber(data.totalHits);
-    this.uniqueImagesEl.textContent = String(data.topImages.length);
+    this.uniqueImagesEl.textContent = String(data.uniqueImages);
 
     if (data.topImages.length === 0) {
       this.imageListEl.innerHTML = '<div class="loading">No data yet</div>';
@@ -110,7 +111,7 @@ class Dashboard {
     const hits: number[] = [];
 
     for (const point of data.data) {
-      const ts = point.bucket_hour ?? point.bucket_day ?? 0;
+      const ts = point.bucket ?? point.bucket_hour ?? point.bucket_day ?? 0;
       timestamps.push(ts);
       hits.push(point.hits);
     }
