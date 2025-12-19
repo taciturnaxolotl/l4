@@ -47,18 +47,26 @@ for (let i = 0; i < numImages; i++) {
 
 console.log("Seeding database with fake data (1 year)...");
 
-// Seed hourly data for older than 24 hours
+// Seed all three tables
 const hourlyStmt = db.prepare(`
   INSERT INTO image_stats (image_key, bucket_hour, hits)
   VALUES (?1, ?2, ?3)
   ON CONFLICT(image_key, bucket_hour) DO UPDATE SET hits = hits + ?3
 `);
 
-console.log("Seeding hourly data (1 year ago to 24 hours ago)...");
+const dailyStmt = db.prepare(`
+  INSERT INTO image_stats_daily (image_key, bucket_day, hits)
+  VALUES (?1, ?2, ?3)
+  ON CONFLICT(image_key, bucket_day) DO UPDATE SET hits = hits + ?3
+`);
+
+console.log("Seeding hourly and daily data (1 year ago to 24 hours ago)...");
 let totalHourlyHits = 0;
+let totalDailyHits = 0;
 
 for (let timestamp = oneYearAgo; timestamp < oneDayAgo; timestamp += 3600) {
   const bucketHour = timestamp - (timestamp % 3600);
+  const bucketDay = timestamp - (timestamp % 86400);
   
   // Time-based factors
   const date = new Date(timestamp * 1000);
@@ -120,7 +128,9 @@ for (let timestamp = oneYearAgo; timestamp < oneDayAgo; timestamp += 3600) {
       // Power law distribution for hit counts (most hits are small, some are large)
       const hits = Math.max(1, Math.floor((Math.random() ** 3) * 200));
       hourlyStmt.run(image.key, bucketHour, hits);
+      dailyStmt.run(image.key, bucketDay, hits);
       totalHourlyHits += hits;
+      totalDailyHits += hits;
     }
   }
   
@@ -138,12 +148,13 @@ const tenMinStmt = db.prepare(`
   ON CONFLICT(image_key, bucket_10min) DO UPDATE SET hits = hits + ?3
 `);
 
-console.log("Seeding 10-minute data (last 24 hours)...");
+console.log("Seeding 10-minute, hourly, and daily data (last 24 hours)...");
 let total10MinHits = 0;
 
 for (let timestamp = oneDayAgo; timestamp <= now; timestamp += 600) {
   const bucket10Min = timestamp - (timestamp % 600);
   const bucketHour = timestamp - (timestamp % 3600);
+  const bucketDay = timestamp - (timestamp % 86400);
   
   // Recent data gets slightly higher activity
   const recency = (timestamp - oneDayAgo) / (now - oneDayAgo);
@@ -187,6 +198,7 @@ for (let timestamp = oneDayAgo; timestamp <= now; timestamp += 600) {
       const hits = Math.max(1, Math.floor((Math.random() ** 3) * 100));
       tenMinStmt.run(image.key, bucket10Min, hits);
       hourlyStmt.run(image.key, bucketHour, hits);
+      dailyStmt.run(image.key, bucketDay, hits);
       total10MinHits += hits;
     }
   }
@@ -194,24 +206,30 @@ for (let timestamp = oneDayAgo; timestamp <= now; timestamp += 600) {
 
 // Get summary stats
 const totalHitsHourly = db.prepare(`SELECT SUM(hits) as total FROM image_stats`).get() as { total: number };
+const totalHitsDaily = db.prepare(`SELECT SUM(hits) as total FROM image_stats_daily`).get() as { total: number };
 const totalHits10Min = db.prepare(`SELECT SUM(hits) as total FROM image_stats_10min`).get() as { total: number };
 const uniqueImages = db.prepare(`
   SELECT COUNT(DISTINCT image_key) as count FROM (
     SELECT image_key FROM image_stats
     UNION
     SELECT image_key FROM image_stats_10min
+    UNION
+    SELECT image_key FROM image_stats_daily
   )
 `).get() as { count: number };
 const hourBuckets = db.prepare(`SELECT COUNT(*) as count FROM image_stats`).get() as { count: number };
+const dayBuckets = db.prepare(`SELECT COUNT(*) as count FROM image_stats_daily`).get() as { count: number };
 const tenMinBuckets = db.prepare(`SELECT COUNT(*) as count FROM image_stats_10min`).get() as { count: number };
 const oldestHit = db.prepare(`SELECT MIN(bucket_hour) as min FROM image_stats`).get() as { min: number };
 const newestHit = db.prepare(`SELECT MAX(bucket_hour) as max FROM image_stats`).get() as { max: number };
 
 console.log("\nSeeding complete!");
 console.log(`- Total hits (hourly): ${totalHitsHourly.total.toLocaleString()}`);
+console.log(`- Total hits (daily): ${totalHitsDaily.total.toLocaleString()}`);
 console.log(`- Total hits (10-min): ${totalHits10Min.total.toLocaleString()}`);
 console.log(`- Unique images: ${uniqueImages.count}`);
 console.log(`- Hourly buckets: ${hourBuckets.count.toLocaleString()}`);
+console.log(`- Daily buckets: ${dayBuckets.count.toLocaleString()}`);
 console.log(`- 10-minute buckets: ${tenMinBuckets.count.toLocaleString()}`);
 console.log(`- Time range: ${new Date(oldestHit.min * 1000).toISOString()} to ${new Date(newestHit.max * 1000).toISOString()}`);
 console.log(`- Days of data: ${Math.floor((newestHit.max - oldestHit.min) / 86400)}`);

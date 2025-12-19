@@ -31,6 +31,12 @@ const incrementHourStmt = db.prepare(`
   ON CONFLICT(image_key, bucket_hour) DO UPDATE SET hits = hits + 1
 `);
 
+const incrementDayStmt = db.prepare(`
+  INSERT INTO image_stats_daily (image_key, bucket_day, hits)
+  VALUES (?1, ?2, 1)
+  ON CONFLICT(image_key, bucket_day) DO UPDATE SET hits = hits + 1
+`);
+
 // Delete old 10-minute data (older than 24 hours)
 const cleanup10MinStmt = db.prepare(`
   DELETE FROM image_stats_10min WHERE bucket_10min < ?
@@ -43,10 +49,12 @@ export function recordHit(imageKey: string): void {
   const now = Math.floor(Date.now() / 1000);
   const bucket10Min = now - (now % 600); // 10 minutes = 600 seconds
   const bucketHour = now - (now % 3600); // 1 hour = 3600 seconds
+  const bucketDay = now - (now % 86400); // 1 day = 86400 seconds
   
-  // Write to both tables
+  // Write to all three tables
   increment10MinStmt.run(imageKey, bucket10Min);
   incrementHourStmt.run(imageKey, bucketHour);
+  incrementDayStmt.run(imageKey, bucketDay);
   
   // Clean up old 10-minute data every 10 minutes
   if (now - lastCleanup >= 600) {
@@ -143,7 +151,48 @@ export function getTraffic(sinceDays: number = 7) {
     }
   }
   
-  // Get the actual time range of available data
+  // For > 30 days, use daily data for better performance
+  if (sinceDays > 30) {
+    const rangeResult = db
+      .prepare(
+        `SELECT MIN(bucket_day) as min_time, MAX(bucket_day) as max_time 
+         FROM image_stats_daily WHERE bucket_day >= ?`
+      )
+      .get(since) as { min_time: number | null; max_time: number | null };
+    
+    if (!rangeResult.min_time || !rangeResult.max_time) {
+      return { granularity: "daily", data: [] };
+    }
+    
+    const actualSpanSeconds = rangeResult.max_time - rangeResult.min_time;
+    const actualSpanDays = actualSpanSeconds / 86400;
+    
+    let bucketSize: number;
+    let bucketLabel: string;
+    
+    // For very long ranges, group days into larger buckets
+    if (actualSpanDays <= 90) {
+      bucketSize = 86400; // 1 day
+      bucketLabel = "daily";
+    } else {
+      // For 90+ days, use multi-day buckets to keep point count reasonable
+      const dayMultiplier = Math.max(1, Math.floor(actualSpanDays / 90));
+      bucketSize = 86400 * dayMultiplier;
+      bucketLabel = dayMultiplier === 1 ? "daily" : `${dayMultiplier}daily`;
+    }
+    
+    const data = db
+      .prepare(
+        `SELECT (bucket_day / ?1) * ?1 as bucket, SUM(hits) as hits 
+         FROM image_stats_daily WHERE bucket_day >= ?2 
+         GROUP BY bucket ORDER BY bucket`
+      )
+      .all(bucketSize, since) as { bucket: number; hits: number }[];
+    
+    return { granularity: bucketLabel, data };
+  }
+  
+  // For 1-30 days, use hourly data
   const rangeResult = db
     .prepare(
       `SELECT MIN(bucket_hour) as min_time, MAX(bucket_hour) as max_time 
