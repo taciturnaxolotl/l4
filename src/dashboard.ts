@@ -23,6 +23,8 @@ class Dashboard {
   private days = 7;
   private chart: uPlot | null = null;
   private abortController: AbortController | null = null;
+  private originalRange: { start: number; end: number } | null = null;
+  private currentRange: { start: number; end: number } | null = null;
 
   private readonly totalHitsEl = document.getElementById("total-hits")!;
   private readonly uniqueImagesEl = document.getElementById("unique-images")!;
@@ -39,9 +41,11 @@ class Dashboard {
   private setupEventListeners() {
     this.buttons.forEach((btn) => {
       btn.addEventListener("click", () => {
-        const newDays = parseInt(btn.dataset.days || "7");
+        const newDays = parseInt(btn.dataset.days || "7", 10);
         if (newDays !== this.days) {
           this.days = newDays;
+          this.currentRange = null; // Reset zoom
+          this.originalRange = null;
           this.updateActiveButton();
           this.fetchData();
         }
@@ -61,9 +65,16 @@ class Dashboard {
     const signal = this.abortController.signal;
 
     try {
+      let trafficUrl = `/api/stats/traffic?days=${this.days}`;
+      
+      // If we have a current range from zooming, use start/end instead
+      if (this.currentRange) {
+        trafficUrl = `/api/stats/traffic?start=${this.currentRange.start}&end=${this.currentRange.end}`;
+      }
+      
       const [overview, traffic] = await Promise.all([
         fetch(`/api/stats/overview?days=${this.days}`, { signal }).then((r) => r.json() as Promise<OverviewData>),
-        fetch(`/api/stats/traffic?days=${this.days}`, { signal }).then((r) => r.json() as Promise<TrafficData>),
+        fetch(trafficUrl, { signal }).then((r) => r.json() as Promise<TrafficData>),
       ]);
 
       if (signal.aborted) return;
@@ -119,6 +130,14 @@ class Dashboard {
     if (timestamps.length === 0) {
       return;
     }
+    
+    // Store original range if not set
+    if (!this.originalRange) {
+      this.originalRange = {
+        start: timestamps[0],
+        end: timestamps[timestamps.length - 1],
+      };
+    }
 
     const chartData: uPlot.AlignedData = [timestamps, hits];
 
@@ -164,10 +183,14 @@ class Dashboard {
       hooks: {
         setSelect: [
           (u) => {
-            if (u.select.width > 0) {
-              const min = u.posToVal(u.select.left, "x");
-              const max = u.posToVal(u.select.left + u.select.width, "x");
-              u.setScale("x", { min, max });
+            if (u.select.width > 10) {
+              const min = Math.floor(u.posToVal(u.select.left, "x"));
+              const max = Math.floor(u.posToVal(u.select.left + u.select.width, "x"));
+              
+              // Store the zoomed range and fetch new data
+              this.currentRange = { start: min, end: max };
+              this.fetchData();
+              
               u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
             }
           },
@@ -181,6 +204,12 @@ class Dashboard {
 
     this.chartEl.innerHTML = "";
     this.chart = new uPlot(opts, chartData, this.chartEl);
+    
+    // Add double-click to reset zoom
+    this.chartEl.addEventListener("dblclick", () => {
+      this.currentRange = null;
+      this.fetchData();
+    });
   }
 
   private handleResize = () => {

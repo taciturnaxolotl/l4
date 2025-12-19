@@ -126,7 +126,21 @@ const server = Bun.serve({
     "/api/stats/traffic": {
       GET(request) {
         const url = new URL(request.url);
-        const days = parseInt(url.searchParams.get("days") || "7");
+        const startParam = url.searchParams.get("start");
+        const endParam = url.searchParams.get("end");
+        
+        if (startParam && endParam) {
+          // Zoom mode: specific time range
+          const start = parseInt(startParam, 10);
+          const end = parseInt(endParam, 10);
+          const spanDays = (end - start) / 86400;
+          
+          // Use span as "days" parameter, pass end time
+          return Response.json(getTraffic(spanDays, end));
+        }
+        
+        // Normal mode: last N days
+        const days = parseInt(url.searchParams.get("days") || "7", 10);
         const safeDays = Math.min(Math.max(days, 1), 365);
         
         return Response.json(getTraffic(safeDays));

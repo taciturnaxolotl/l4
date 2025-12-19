@@ -133,18 +133,24 @@ export function getDailyTraffic(sinceDays: number = 30) {
     .all(since) as { bucket_day: number; hits: number }[];
 }
 
-export function getTraffic(sinceDays: number = 7) {
-  const since = Math.floor(Date.now() / 1000) - sinceDays * 86400;
+export function getTraffic(sinceDays: number = 7, endTime?: number) {
+  const now = Math.floor(Date.now() / 1000);
+  const since = now - sinceDays * 86400;
+  const end = endTime || now;
+  
+  // Calculate actual span (in case we're querying a specific range)
+  const spanSeconds = end - since;
+  const spanDays = spanSeconds / 86400;
   
   // For <= 1 day, use 10-minute data if available
-  if (sinceDays <= 1) {
+  if (spanDays <= 1) {
     const data = db
       .prepare(
         `SELECT bucket_10min as bucket, SUM(hits) as hits 
-         FROM image_stats_10min WHERE bucket_10min >= ? 
+         FROM image_stats_10min WHERE bucket_10min >= ? AND bucket_10min <= ?
          GROUP BY bucket_10min ORDER BY bucket_10min`
       )
-      .all(since) as { bucket: number; hits: number }[];
+      .all(since, end) as { bucket: number; hits: number }[];
     
     if (data.length > 0) {
       return { granularity: "10min", data };
@@ -152,13 +158,13 @@ export function getTraffic(sinceDays: number = 7) {
   }
   
   // For > 30 days, use daily data for better performance
-  if (sinceDays > 30) {
+  if (spanDays > 30) {
     const rangeResult = db
       .prepare(
         `SELECT MIN(bucket_day) as min_time, MAX(bucket_day) as max_time 
-         FROM image_stats_daily WHERE bucket_day >= ?`
+         FROM image_stats_daily WHERE bucket_day >= ? AND bucket_day <= ?`
       )
-      .get(since) as { min_time: number | null; max_time: number | null };
+      .get(since, end) as { min_time: number | null; max_time: number | null };
     
     if (!rangeResult.min_time || !rangeResult.max_time) {
       return { granularity: "daily", data: [] };
@@ -184,10 +190,10 @@ export function getTraffic(sinceDays: number = 7) {
     const data = db
       .prepare(
         `SELECT (bucket_day / ?1) * ?1 as bucket, SUM(hits) as hits 
-         FROM image_stats_daily WHERE bucket_day >= ?2 
+         FROM image_stats_daily WHERE bucket_day >= ?2 AND bucket_day <= ?3
          GROUP BY bucket ORDER BY bucket`
       )
-      .all(bucketSize, since) as { bucket: number; hits: number }[];
+      .all(bucketSize, since, end) as { bucket: number; hits: number }[];
     
     return { granularity: bucketLabel, data };
   }
@@ -196,9 +202,9 @@ export function getTraffic(sinceDays: number = 7) {
   const rangeResult = db
     .prepare(
       `SELECT MIN(bucket_hour) as min_time, MAX(bucket_hour) as max_time 
-       FROM image_stats WHERE bucket_hour >= ?`
+       FROM image_stats WHERE bucket_hour >= ? AND bucket_hour <= ?`
     )
-    .get(since) as { min_time: number | null; max_time: number | null };
+    .get(since, end) as { min_time: number | null; max_time: number | null };
   
   if (!rangeResult.min_time || !rangeResult.max_time) {
     return { granularity: "hourly", data: [] };
@@ -227,10 +233,10 @@ export function getTraffic(sinceDays: number = 7) {
   const data = db
     .prepare(
       `SELECT (bucket_hour / ?1) * ?1 as bucket, SUM(hits) as hits 
-       FROM image_stats WHERE bucket_hour >= ?2 
+       FROM image_stats WHERE bucket_hour >= ?2 AND bucket_hour <= ?3
        GROUP BY bucket ORDER BY bucket`
     )
-    .all(bucketSize, since) as { bucket: number; hits: number }[];
+    .all(bucketSize, since, end) as { bucket: number; hits: number }[];
   
   return { granularity: bucketLabel, data };
 }
