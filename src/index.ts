@@ -183,6 +183,7 @@ async function handleImageUpload(
 			"image/gif",
 			"image/webp",
 			"image/avif",
+			"image/svg+xml",
 		];
 		if (!validTypes.includes(contentType)) {
 			return new Response(JSON.stringify({ error: "Invalid file type" }), {
@@ -225,10 +226,37 @@ async function optimizeAndUpload(
 	imageBlob: Blob,
 	originalFilename: string,
 ): Promise<{ key: string; contentType: string }> {
-	// Convert blob to ArrayBuffer
+	const contentType = imageBlob.type;
+
+	// SVGs: store as-is without conversion
+	if (contentType === "image/svg+xml") {
+		let imageKey: string;
+		let attempts = 0;
+		const maxAttempts = 10;
+		
+		do {
+			imageKey = `${nanoid(12)}.svg`;
+			const exists = await env.IMAGES.head(imageKey);
+			if (!exists) break;
+			attempts++;
+		} while (attempts < maxAttempts);
+
+		if (attempts >= maxAttempts) {
+			throw new Error("Failed to generate unique image key");
+		}
+
+		await env.IMAGES.put(imageKey, imageBlob.stream(), {
+			httpMetadata: {
+				contentType: "image/svg+xml",
+			},
+		});
+
+		return { key: imageKey, contentType: "image/svg+xml" };
+	}
+
+	// Other formats: optimize and convert to WebP
 	const imageBuffer = await imageBlob.arrayBuffer();
 
-	// Optimize image - convert to WebP at 85% quality
 	const optimized = await optimizeImage({
 		image: imageBuffer,
 		width: undefined, // Keep original dimensions
@@ -237,8 +265,21 @@ async function optimizeAndUpload(
 		quality: 85,
 	});
 
-	// Generate random key with .webp extension
-	const imageKey = `${nanoid(12)}.webp`;
+	// Generate random key with collision detection
+	let imageKey: string;
+	let attempts = 0;
+	const maxAttempts = 10;
+	
+	do {
+		imageKey = `${nanoid(12)}.webp`;
+		const exists = await env.IMAGES.head(imageKey);
+		if (!exists) break;
+		attempts++;
+	} while (attempts < maxAttempts);
+
+	if (attempts >= maxAttempts) {
+		throw new Error("Failed to generate unique image key");
+	}
 
 	// Upload optimized version to R2
 	await env.IMAGES.put(imageKey, optimized, {
