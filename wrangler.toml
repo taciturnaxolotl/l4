@@ -20,7 +20,7 @@ globs = ["**/*.html"]
 fallthrough = false
 
 [vars]
-HOST = "https://l4.yourdomain.com"
+HOST = "https://l4.dunkirk.sh"
 INDIKO_URL = "https://indiko.dunkirk.sh"
 
 # Environment variables

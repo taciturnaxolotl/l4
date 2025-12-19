@@ -10,6 +10,20 @@ export default {
 	): Promise<Response> {
 		const url = new URL(request.url);
 
+		// Serve favicon
+		if (url.pathname === "/favicon.svg" && request.method === "GET") {
+			const faviconSvg = `<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="512" height="512" fill="#694873"/>
+<path d="M244.878 329.25H254.328V387H95.0783V377.9L114.328 375.8C118.062 375.333 120.278 374.4 120.978 373C121.678 371.6 122.028 366.817 122.028 358.65V177.35C122.028 169.183 121.678 164.4 120.978 163C120.278 161.6 118.062 160.667 114.328 160.2L95.0783 158.45V149H179.428V158.45L160.178 160.2C156.445 160.667 154.228 161.6 153.528 163C152.828 164.4 152.478 169.183 152.478 177.35V375.8H215.828C221.428 375.8 225.395 375.683 227.728 375.45C230.062 374.983 231.578 374.167 232.278 373C233.212 371.6 234.028 369.5 234.728 366.7L244.878 329.25ZM365.155 358.65V325.4H264.005V314.2C275.905 301.6 286.172 289.35 294.805 277.45C303.439 265.317 310.905 252.833 317.205 240C323.505 227.167 328.989 213.4 333.655 198.7C338.555 183.767 342.989 167.2 346.955 149H384.055C374.722 181.9 361.072 211.417 343.105 237.55C325.139 263.683 303.672 289.233 278.705 314.2H365.155V259.25L395.605 254.35V314.2H422.555V325.4H395.605V358.65C395.605 366.817 395.955 371.6 396.655 373C397.355 374.4 399.572 375.333 403.305 375.8L422.555 377.9V387H331.205V377.9L357.455 375.8C361.189 375.567 363.405 374.75 364.105 373.35C364.805 371.717 365.155 366.817 365.155 358.65Z" fill="#85B79D"/>
+</svg>`;
+			return new Response(faviconSvg, {
+				headers: {
+					"Content-Type": "image/svg+xml",
+					"Cache-Control": "public, max-age=31536000",
+				},
+			});
+		}
+
 		// Public routes
 		if (url.pathname === "/login" && request.method === "GET") {
 			return new Response(loginHTML, {
@@ -88,7 +102,10 @@ export default {
 
 				if (!tokenResponse.ok) {
 					return Response.redirect(
-						new URL("/login?error=token_exchange_failed", request.url).toString(),
+						new URL(
+							"/login?error=token_exchange_failed",
+							request.url,
+						).toString(),
 						302,
 					);
 				}
@@ -226,7 +243,8 @@ export default {
 			// Block write operations for viewers
 			const isWriteOperation =
 				(url.pathname === "/api/upload" && request.method === "POST") ||
-				(url.pathname.startsWith("/api/images/") && request.method === "DELETE") ||
+				(url.pathname.startsWith("/api/images/") &&
+					request.method === "DELETE") ||
 				(url.pathname === "/api/keys" && request.method === "POST") ||
 				(url.pathname.startsWith("/api/keys/") && request.method === "DELETE");
 
@@ -256,7 +274,10 @@ export default {
 		}
 
 		// Delete image
-		if (url.pathname.startsWith("/api/images/") && request.method === "DELETE") {
+		if (
+			url.pathname.startsWith("/api/images/") &&
+			request.method === "DELETE"
+		) {
 			const imageKey = url.pathname.split("/")[3];
 			return handleDeleteImage(imageKey, env);
 		}
@@ -299,7 +320,8 @@ async function handleImageRequest(
 		}
 		return new Response(object.body, {
 			headers: {
-				"Content-Type": object.httpMetadata?.contentType || "application/octet-stream",
+				"Content-Type":
+					object.httpMetadata?.contentType || "application/octet-stream",
 				"Cache-Control": "public, max-age=31536000",
 			},
 		});
@@ -328,11 +350,15 @@ async function handleImageRequest(
 
 	// In local dev, Cloudflare image transformations don't work
 	// So we just serve the original image
-	const isLocalDev = url.hostname === "localhost" || url.hostname.includes("127.0.0.1");
-	
+	const isLocalDev =
+		url.hostname === "localhost" || url.hostname.includes("127.0.0.1");
+
 	if (isLocalDev) {
 		const headers = new Headers();
-		headers.set("Content-Type", object.httpMetadata?.contentType || "image/png");
+		headers.set(
+			"Content-Type",
+			object.httpMetadata?.contentType || "image/png",
+		);
 		headers.set("Cache-Control", "public, max-age=31536000");
 		return new Response(object.body, { headers });
 	}
@@ -366,7 +392,10 @@ async function handleImageRequest(
 
 	// Clone response with cache headers
 	response = new Response(imageResponse.body, imageResponse);
-	response.headers.set("Cache-Control", "public, max-age=31536000, s-maxage=86400");
+	response.headers.set(
+		"Cache-Control",
+		"public, max-age=31536000, s-maxage=86400",
+	);
 	response.headers.set("Vary", "Accept");
 
 	// Cache asynchronously
@@ -393,7 +422,13 @@ async function handleImageUpload(
 
 		// Validate file type
 		const contentType = file.type;
-		const validTypes = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"];
+		const validTypes = [
+			"image/jpeg",
+			"image/png",
+			"image/gif",
+			"image/webp",
+			"image/avif",
+		];
 		if (!validTypes.includes(contentType)) {
 			return new Response(JSON.stringify({ error: "Invalid file type" }), {
 				status: 400,
@@ -446,10 +481,7 @@ async function handleImageUpload(
 	}
 }
 
-async function handleListImages(
-	request: Request,
-	env: Env,
-): Promise<Response> {
+async function handleListImages(request: Request, env: Env): Promise<Response> {
 	const url = new URL(request.url);
 	const limit = parseInt(url.searchParams.get("limit") || "100");
 	const cursor = url.searchParams.get("cursor") || undefined;
@@ -519,10 +551,9 @@ async function handleListApiKeys(env: Env): Promise<Response> {
 		}),
 	);
 
-	return new Response(
-		JSON.stringify({ keys: keys.filter(Boolean) }),
-		{ headers: { "Content-Type": "application/json" } },
-	);
+	return new Response(JSON.stringify({ keys: keys.filter(Boolean) }), {
+		headers: { "Content-Type": "application/json" },
+	});
 }
 
 async function handleCreateApiKey(
@@ -571,10 +602,7 @@ async function handleCreateApiKey(
 	}
 }
 
-async function handleDeleteApiKey(
-	keyId: string,
-	env: Env,
-): Promise<Response> {
+async function handleDeleteApiKey(keyId: string, env: Env): Promise<Response> {
 	await env.L4.delete(`apikey:${keyId}`);
 
 	return new Response(JSON.stringify({ success: true }), {
