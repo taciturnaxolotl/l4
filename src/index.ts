@@ -51,12 +51,18 @@ export default {
 			const state = url.searchParams.get("state");
 
 			if (!code || !state) {
-				return Response.redirect(`/login?error=missing_params`, 302);
+				return Response.redirect(
+					new URL("/login?error=missing_params", request.url).toString(),
+					302,
+				);
 			}
 
 			const oauthData = await env.L4.get(`oauth:${state}`);
 			if (!oauthData) {
-				return Response.redirect(`/login?error=invalid_state`, 302);
+				return Response.redirect(
+					new URL("/login?error=invalid_state", request.url).toString(),
+					302,
+				);
 			}
 
 			const { codeVerifier } = JSON.parse(oauthData);
@@ -81,13 +87,19 @@ export default {
 				});
 
 				if (!tokenResponse.ok) {
-					return Response.redirect(`/login?error=token_exchange_failed`, 302);
+					return Response.redirect(
+						new URL("/login?error=token_exchange_failed", request.url).toString(),
+						302,
+					);
 				}
 
 				const tokenData = await tokenResponse.json();
 
 				if (tokenData.role !== "admin" && tokenData.role !== "viewer") {
-					return Response.redirect(`/login?error=unauthorized_role`, 302);
+					return Response.redirect(
+						new URL("/login?error=unauthorized_role", request.url).toString(),
+						302,
+					);
 				}
 
 				const sessionToken = nanoid(32);
@@ -108,7 +120,10 @@ export default {
 				redirectUrl.searchParams.set("token", sessionToken);
 				return Response.redirect(redirectUrl.toString(), 302);
 			} catch (error) {
-				return Response.redirect(`/login?error=unknown`, 302);
+				return Response.redirect(
+					new URL("/login?error=unknown", request.url).toString(),
+					302,
+				);
 			}
 		}
 
@@ -309,6 +324,17 @@ async function handleImageRequest(
 	const object = await env.IMAGES.get(imageKey);
 	if (!object) {
 		return new Response("Not found", { status: 404 });
+	}
+
+	// In local dev, Cloudflare image transformations don't work
+	// So we just serve the original image
+	const isLocalDev = url.hostname === "localhost" || url.hostname.includes("127.0.0.1");
+	
+	if (isLocalDev) {
+		const headers = new Headers();
+		headers.set("Content-Type", object.httpMetadata?.contentType || "image/png");
+		headers.set("Cache-Control", "public, max-age=31536000");
+		return new Response(object.body, { headers });
 	}
 
 	// Build image transformation options

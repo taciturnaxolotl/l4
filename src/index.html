@@ -614,7 +614,11 @@
                     throw new Error('upload failed');
                 }
 
-                showStatus('image uploaded');
+                const result = await response.json();
+                const imageUrl = window.location.origin + '/i/' + result.key;
+                
+                navigator.clipboard.writeText(imageUrl);
+                showStatus('image uploaded • url copied');
                 await loadImages();
                 fileInput.value = '';
             } catch (error) {

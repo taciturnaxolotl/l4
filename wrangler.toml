@@ -8,6 +8,7 @@ enabled = true
 [[r2_buckets]]
 binding = "IMAGES"
 bucket_name = "l4-images"
+preview_bucket_name = "l4-images"
 
 [[kv_namespaces]]
 binding = "L4"
