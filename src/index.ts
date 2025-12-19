@@ -26,6 +26,12 @@ export default {
 					return;
 				}
 
+				// Check if channel is allowed
+				const allowedChannels = env.ALLOWED_CHANNELS?.split(",").map(c => c.trim()) || [];
+				if (allowedChannels.length > 0 && !allowedChannels.includes(payload.channel)) {
+					return;
+				}
+
 				// React with loading emoji
 				await context.client.reactions.add({
 					channel: payload.channel,
@@ -302,4 +308,5 @@ interface Env extends SlackEdgeAppEnv {
 	IMAGES: R2Bucket;
 	AUTH_TOKEN: string;
 	PUBLIC_URL: string;
+	ALLOWED_CHANNELS?: string;
 }

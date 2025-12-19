@@ -60,6 +60,7 @@ Slack CDN bot for Cloudflare Workers:
 
 Config (wrangler.toml):
 - `PUBLIC_URL` - Public URL of the service (e.g., https://l4.dunkirk.sh)
+- `ALLOWED_CHANNELS` - Comma-separated Slack channel IDs (e.g., "C12345,C67890"). Leave empty to allow all channels.
 
 Secrets:
 - `AUTH_TOKEN` - Auth token for API uploads

@@ -12,6 +12,7 @@ preview_bucket_name = "l4-images"
 
 [vars]
 PUBLIC_URL = "https://l4.dunkirk.sh"
+ALLOWED_CHANNELS = "C08EKUY7QVA"  # Comma-separated channel IDs
 
 # Set secrets:
 # wrangler secret put AUTH_TOKEN
