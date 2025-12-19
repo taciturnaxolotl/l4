@@ -1,27 +1,21 @@
 import sharp from "sharp";
 import { nanoid } from "nanoid";
 
-// R2 configuration from env
-const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID!;
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID!;
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY!;
-const R2_BUCKET = process.env.R2_BUCKET || "l4-images";
-const R2_ENDPOINT = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
+// Configuration from env
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL!;
 const PUBLIC_URL = process.env.PUBLIC_URL || "http://localhost:3000";
+
+// S3 config (for logging only - client auto-loads from S3_* env vars)
+const S3_BUCKET = process.env.S3_BUCKET || process.env.AWS_BUCKET || "l4-images";
+const S3_ENDPOINT = process.env.S3_ENDPOINT || process.env.AWS_ENDPOINT || "unknown";
 
 // Slack configuration
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN!;
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET!;
 const ALLOWED_CHANNELS = process.env.ALLOWED_CHANNELS?.split(",").map(c => c.trim()) || [];
 
-// Create S3 client for R2
-const s3 = new Bun.S3Client({
-  accessKeyId: R2_ACCESS_KEY_ID,
-  secretAccessKey: R2_SECRET_ACCESS_KEY,
-  bucket: R2_BUCKET,
-  endpoint: R2_ENDPOINT,
-});
+// Create S3 client for R2 (auto-loads from S3_* or AWS_* env vars)
+const s3 = new Bun.S3Client();
 
 async function optimizeImage(buffer: Buffer, mimeType: string): Promise<{ buffer: Buffer; contentType: string; extension: string }> {
   // Skip SVGs - just return as-is
@@ -247,7 +241,8 @@ async function callSlackAPI(method: string, params: any) {
 }
 
 console.log(`L4 Image CDN started on port ${server.port}`);
-console.log(`- R2 Bucket: ${R2_BUCKET}`);
+console.log(`- S3 Bucket: ${S3_BUCKET}`);
+console.log(`- S3 Endpoint: ${S3_ENDPOINT}`);
 console.log(`- R2 Public URL: ${R2_PUBLIC_URL}`);
 console.log(`- Public URL: ${PUBLIC_URL}`);
 console.log(`- Slack events: ${PUBLIC_URL}/slack/events`);
