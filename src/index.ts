@@ -29,10 +29,16 @@ const s3 = new Bun.S3Client({
   region: S3_REGION,
 });
 
-async function optimizeImage(buffer: Buffer, mimeType: string): Promise<{ buffer: Buffer; contentType: string; extension: string }> {
+async function optimizeImage(buffer: Buffer, mimeType: string, preserveFormat = false): Promise<{ buffer: Buffer; contentType: string; extension: string }> {
   // Skip SVGs - just return as-is
   if (mimeType === "image/svg+xml") {
     return { buffer, contentType: mimeType, extension: "svg" };
+  }
+
+  // If preserveFormat is true, keep original format
+  if (preserveFormat) {
+    const extension = mimeType.split("/")[1] || "jpg";
+    return { buffer, contentType: mimeType, extension };
   }
 
   // Convert to WebP with optimization (effort 4 = balanced speed/compression)
@@ -198,12 +204,15 @@ async function handleUpload(request: Request) {
       return Response.json({ success: false, error: "No file provided" }, { status: 400 });
     }
 
+    // Check if preserveFormat is requested
+    const preserveFormat = formData.get("preserveFormat") === "true";
+
     // Read file buffer
     const originalBuffer = Buffer.from(await file.arrayBuffer());
     const contentType = file.type || "image/jpeg";
 
     // Optimize image
-    const { buffer: optimizedBuffer, contentType: newContentType } = await optimizeImage(originalBuffer, contentType);
+    const { buffer: optimizedBuffer, contentType: newContentType } = await optimizeImage(originalBuffer, contentType, preserveFormat);
 
     // Upload to R2
     const imageKey = await uploadImageToR2(optimizedBuffer, newContentType);
@@ -257,6 +266,9 @@ async function handleSlackEvent(request: Request) {
 
 async function processSlackFiles(event: any) {
   try {
+    // Check if message text contains "preserve"
+    const preserveFormat = event.text?.toLowerCase().includes("preserve") ?? false;
+
     // React with loading emoji (don't await - do it in parallel with downloads)
     const loadingReaction = callSlackAPI("reactions.add", {
       channel: event.channel,
@@ -285,11 +297,15 @@ async function processSlackFiles(event: any) {
 
         console.log(`Downloaded ${file.name} (${originalBuffer.length} bytes)`);
 
-        // Optimize image
-        const { buffer: optimizedBuffer, contentType: newContentType } = await optimizeImage(originalBuffer, contentType);
+        // Optimize image (preserve format if message says "preserve")
+        const { buffer: optimizedBuffer, contentType: newContentType } = await optimizeImage(originalBuffer, contentType, preserveFormat);
 
         const savings = ((1 - optimizedBuffer.length / originalBuffer.length) * 100).toFixed(1);
-        console.log(`Optimized: ${originalBuffer.length} → ${optimizedBuffer.length} bytes (${savings}% reduction)`);
+        if (preserveFormat) {
+          console.log(`Uploaded: ${originalBuffer.length} bytes (format preserved)`);
+        } else {
+          console.log(`Optimized: ${originalBuffer.length} → ${optimizedBuffer.length} bytes (${savings}% reduction)`);
+        }
 
         // Upload to R2
         const imageKey = await uploadImageToR2(optimizedBuffer, newContentType);
