@@ -137,16 +137,18 @@ export function getDailyTraffic(sinceDays: number = 30) {
 		.all(since) as { bucket_day: number; hits: number }[];
 }
 
-export function getTraffic(sinceDays: number = 7, endTime?: number) {
+export function getTraffic(
+	sinceDays: number = 7,
+	options?: { startTime?: number; endTime?: number },
+) {
 	const now = Math.floor(Date.now() / 1000);
-	const since = now - sinceDays * 86400;
-	const end = endTime || now;
+	const since = options?.startTime ?? now - sinceDays * 86400;
+	const end = options?.endTime ?? now;
 
-	// Calculate actual span (in case we're querying a specific range)
 	const spanSeconds = end - since;
 	const spanDays = spanSeconds / 86400;
 
-	// For <= 1 day, use 10-minute data if available
+	// <= 1 day: 10min data if available
 	if (spanDays <= 1) {
 		const data = db
 			.prepare(
@@ -161,86 +163,27 @@ export function getTraffic(sinceDays: number = 7, endTime?: number) {
 		}
 	}
 
-	// For > 30 days, use daily data for better performance
-	if (spanDays > 30) {
-		const rangeResult = db
-			.prepare(
-				`SELECT MIN(bucket_day) as min_time, MAX(bucket_day) as max_time 
-         FROM image_stats_daily WHERE bucket_day >= ? AND bucket_day <= ?`,
-			)
-			.get(since, end) as { min_time: number | null; max_time: number | null };
-
-		if (!rangeResult.min_time || !rangeResult.max_time) {
-			return { granularity: "daily", data: [] };
-		}
-
-		const actualSpanSeconds = rangeResult.max_time - rangeResult.min_time;
-		const actualSpanDays = actualSpanSeconds / 86400;
-
-		let bucketSize: number;
-		let bucketLabel: string;
-
-		// For very long ranges, group days into larger buckets
-		if (actualSpanDays <= 90) {
-			bucketSize = 86400; // 1 day
-			bucketLabel = "daily";
-		} else {
-			// For 90+ days, use multi-day buckets to keep point count reasonable
-			const dayMultiplier = Math.max(1, Math.floor(actualSpanDays / 90));
-			bucketSize = 86400 * dayMultiplier;
-			bucketLabel = dayMultiplier === 1 ? "daily" : `${dayMultiplier}daily`;
-		}
-
+	// 1-30 days: always hourly
+	if (spanDays <= 30) {
 		const data = db
 			.prepare(
-				`SELECT (bucket_day / ?1) * ?1 as bucket, SUM(hits) as hits 
-         FROM image_stats_daily WHERE bucket_day >= ?2 AND bucket_day <= ?3
-         GROUP BY bucket ORDER BY bucket`,
+				`SELECT bucket_hour as bucket, SUM(hits) as hits
+         FROM image_stats WHERE bucket_hour >= ? AND bucket_hour <= ?
+         GROUP BY bucket_hour ORDER BY bucket_hour`,
 			)
-			.all(bucketSize, since, end) as { bucket: number; hits: number }[];
+			.all(since, end) as { bucket: number; hits: number }[];
 
-		return { granularity: bucketLabel, data };
+		return { granularity: "hourly", data };
 	}
 
-	// For 1-30 days, use hourly data
-	const rangeResult = db
-		.prepare(
-			`SELECT MIN(bucket_hour) as min_time, MAX(bucket_hour) as max_time 
-       FROM image_stats WHERE bucket_hour >= ? AND bucket_hour <= ?`,
-		)
-		.get(since, end) as { min_time: number | null; max_time: number | null };
-
-	if (!rangeResult.min_time || !rangeResult.max_time) {
-		return { granularity: "hourly", data: [] };
-	}
-
-	// Calculate actual data span in days
-	const actualSpanSeconds = rangeResult.max_time - rangeResult.min_time;
-	const actualSpanDays = actualSpanSeconds / 86400;
-
-	// Scale granularity based on actual data span
-	// <= 7 days: hourly
-	// > 7 days: bucket size = floor(days / 7) hours
-
-	let bucketSize: number;
-	let bucketLabel: string;
-
-	if (actualSpanDays <= 7) {
-		bucketSize = 3600; // 1 hour
-		bucketLabel = "hourly";
-	} else {
-		const hourMultiplier = Math.floor(actualSpanDays / 7);
-		bucketSize = 3600 * hourMultiplier;
-		bucketLabel = `${hourMultiplier}hourly`;
-	}
-
+	// > 30 days: daily
 	const data = db
 		.prepare(
-			`SELECT (bucket_hour / ?1) * ?1 as bucket, SUM(hits) as hits 
-       FROM image_stats WHERE bucket_hour >= ?2 AND bucket_hour <= ?3
-       GROUP BY bucket ORDER BY bucket`,
+			`SELECT bucket_day as bucket, SUM(hits) as hits 
+       FROM image_stats_daily WHERE bucket_day >= ? AND bucket_day <= ?
+       GROUP BY bucket_day ORDER BY bucket_day`,
 		)
-		.all(bucketSize, since, end) as { bucket: number; hits: number }[];
+		.all(since, end) as { bucket: number; hits: number }[];
 
-	return { granularity: bucketLabel, data };
+	return { granularity: "daily", data };
 }

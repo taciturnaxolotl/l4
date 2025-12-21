@@ -159,8 +159,9 @@ const server = Bun.serve({
 					const end = parseInt(endParam, 10);
 					const spanDays = (end - start) / 86400;
 
-					// Use span as "days" parameter, pass end time
-					return Response.json(getTraffic(spanDays, end));
+					return Response.json(
+						getTraffic(spanDays, { startTime: start, endTime: end }),
+					);
 				}
 
 				// Normal mode: last N days

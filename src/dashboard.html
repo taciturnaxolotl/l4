@@ -52,7 +52,10 @@
 
     <section class="chart-container">
       <h2>Traffic Overview</h2>
-      <div class="chart-wrapper" id="chart" role="img" aria-label="Traffic over time chart"></div>
+      <div class="chart-outer">
+        <div class="chart-wrapper" id="chart" role="img" aria-label="Traffic over time chart"></div>
+        <div id="chart-loading" class="chart-loading">Refining...</div>
+      </div>
       <p class="chart-hint">Drag to zoom, double-click to reset</p>
     </section>
 

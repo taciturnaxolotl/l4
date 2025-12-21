@@ -115,9 +115,33 @@ header h1 {
 	color: var(--text-primary);
 }
 
-.chart-wrapper {
-	height: 300px;
+.chart-outer {
 	position: relative;
+	height: 300px;
+}
+
+.chart-wrapper {
+	height: 100%;
+}
+
+.chart-loading {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(250, 246, 243, 0.5);
+	backdrop-filter: blur(1px);
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.15s ease-out;
+	z-index: 10;
+}
+
+.chart-loading.visible {
+	opacity: 1;
 }
 
 .chart-hint {
