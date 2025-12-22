@@ -86,7 +86,6 @@ class Dashboard {
 	private lodCache: Partial<Record<Granularity, LodCacheEntry>> = {};
 	private activeGranularity: Granularity | null = null;
 	private isLoading = false;
-	private dblClickHandler: (() => void) | null = null;
 
 	private readonly totalHitsEl = document.getElementById(
 		"total-hits",
@@ -299,7 +298,10 @@ class Dashboard {
 			this.originalRange = { start: first, end: last };
 			this.renderCurrentViewport({ min: first, max: last });
 		} else {
-			this.renderCurrentViewport();
+			this.renderCurrentViewport({
+				min: this.currentRange.start,
+				max: this.currentRange.end,
+			});
 		}
 	}
 
@@ -368,10 +370,18 @@ class Dashboard {
 	private handleSelect(u: uPlot) {
 		if (u.select.width <= 10) return;
 
-		const min = Math.floor(u.posToVal(u.select.left, "x"));
-		const max = Math.floor(u.posToVal(u.select.left + u.select.width, "x"));
+		let min = Math.floor(u.posToVal(u.select.left, "x"));
+		let max = Math.floor(u.posToVal(u.select.left + u.select.width, "x"));
 
 		u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+
+		const minSpan = 1.5 * 86400;
+		const span = max - min;
+		if (span < minSpan) {
+			const center = (min + max) / 2;
+			min = Math.floor(center - minSpan / 2);
+			max = Math.floor(center + minSpan / 2);
+		}
 
 		this.currentRange = { start: min, end: max };
 
@@ -396,6 +406,7 @@ class Dashboard {
 				max: this.originalRange.end,
 			});
 			this.renderCurrentViewport();
+			this.fetchData();
 		}
 	}
 
@@ -414,7 +425,21 @@ class Dashboard {
 				height: 0,
 			},
 			scales: {
-				x: { time: true },
+				x: {
+					time: true,
+					range: (u, dataMin, dataMax) => {
+						let min = dataMin;
+						let max = dataMax;
+						const minSpan = 1.5 * 86400;
+						const span = max - min;
+						if (span < minSpan) {
+							const center = (min + max) / 2;
+							min = center - minSpan / 2;
+							max = center + minSpan / 2;
+						}
+						return [min, max];
+					},
+				},
 				y: { auto: true },
 			},
 			axes: [
@@ -441,17 +466,16 @@ class Dashboard {
 			],
 			hooks: {
 				setSelect: [(u) => this.handleSelect(u)],
+				ready: [
+					(u) => {
+						u.over.addEventListener("dblclick", () => this.resetZoom());
+					},
+				],
 			},
 		};
 
 		this.chartEl.innerHTML = "";
 		this.chart = new uPlot(opts, [timestamps, hits], this.chartEl);
-
-		if (this.dblClickHandler) {
-			this.chartEl.removeEventListener("dblclick", this.dblClickHandler);
-		}
-		this.dblClickHandler = () => this.resetZoom();
-		this.chartEl.addEventListener("dblclick", this.dblClickHandler);
 	}
 
 	private handleResize = () => {
