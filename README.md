@@ -1,5 +1,7 @@
 # The L4 cache
 
+![screenshot](https://l4.dunkirk.sh/i/_4FmH-ItogOD.webp)
+
 This is my own image cdn built on cloudflare r2 mainly so I can have fast optimized images on my blog.
 
 ## Docs
