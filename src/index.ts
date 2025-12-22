@@ -205,6 +205,7 @@ const server = Bun.serve({
 	async fetch(_request) {
 		return new Response("Not found", { status: 404 });
 	},
+	development: process.env?.NODE_ENV === "dev",
 });
 
 async function handleUpload(request: Request) {
