@@ -1,10 +1,10 @@
 display_information:
-  name: tacy
+  name: tacyCloud
   description: Automatically uploads files to R2 and provides public URLs
   background_color: "#0e2d52"
 features:
   bot_user:
-    display_name: Tacy
+    display_name: tacyCloud
     always_online: true
 oauth_config:
   scopes:
