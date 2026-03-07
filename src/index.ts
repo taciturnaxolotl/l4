@@ -34,6 +34,10 @@ const ALLOWED_CHANNELS =
 const ADMIN_USERS =
 	process.env.ADMIN_USERS?.split(",").map((u) => u.trim()) || [];
 
+// Cloudflare cache purge configuration
+const CF_ZONE_ID = process.env.CF_ZONE_ID || "";
+const CF_API_TOKEN = process.env.CF_API_TOKEN || "";
+
 // Create S3 client for R2 with explicit configuration
 const s3 = new Bun.S3Client({
 	accessKeyId: S3_ACCESS_KEY_ID,
@@ -340,6 +344,22 @@ interface SlackMessageEvent {
 	user?: string;
 }
 
+async function purgeCache(keys: string[]) {
+	if (!CF_ZONE_ID || !CF_API_TOKEN) return;
+	const urls = keys.map((key) => `${PUBLIC_URL}/i/${key}`);
+	await fetch(
+		`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache`,
+		{
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${CF_API_TOKEN}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ files: urls }),
+		},
+	).catch((err) => console.error("Cache purge failed:", err));
+}
+
 // Find image keys, original uploader, and bot message ts from a thread
 async function getThreadInfo(
 	channel: string,
@@ -407,6 +427,7 @@ async function handleDeleteRequest(event: SlackMessageEvent) {
 		// Delete images from R2 and stats DB
 		await Promise.all(keys.map((key) => s3.delete(key)));
 		keys.forEach((key) => deleteImageStats(key));
+		await purgeCache(keys);
 		console.log(`Deleted ${keys.length} image(s): ${keys.join(", ")}`);
 
 		// Strikethrough the bot's message
@@ -505,6 +526,9 @@ async function handleReplaceRequest(event: SlackMessageEvent) {
 				console.log(`Replaced in R2: ${existingKey}`);
 			}),
 		);
+
+		const replacedKeys = keys.slice(0, files.length);
+		await purgeCache(replacedKeys);
 
 		await loadingReaction;
 
