@@ -68,6 +68,16 @@ export function recordHit(imageKey: string): void {
 	}
 }
 
+const deleteStatsTransaction = db.transaction((imageKey: string) => {
+	db.prepare("DELETE FROM image_stats_10min WHERE image_key = ?").run(imageKey);
+	db.prepare("DELETE FROM image_stats WHERE image_key = ?").run(imageKey);
+	db.prepare("DELETE FROM image_stats_daily WHERE image_key = ?").run(imageKey);
+});
+
+export function deleteImageStats(imageKey: string): void {
+	deleteStatsTransaction(imageKey);
+}
+
 export function getStats(imageKey: string, sinceDays: number = 30) {
 	const since = Math.floor(Date.now() / 1000) - sinceDays * 86400;
 	return db

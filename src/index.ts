@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import sharp from "sharp";
 import dashboard from "./dashboard.html";
 import {
+	deleteImageStats,
 	getStats,
 	getTopImages,
 	getTotalHits,
@@ -30,6 +31,8 @@ const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN || "";
 const _SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET || "";
 const ALLOWED_CHANNELS =
 	process.env.ALLOWED_CHANNELS?.split(",").map((c) => c.trim()) || [];
+const ADMIN_USERS =
+	process.env.ADMIN_USERS?.split(",").map((u) => u.trim()) || [];
 
 // Create S3 client for R2 with explicit configuration
 const s3 = new Bun.S3Client({
@@ -271,23 +274,35 @@ async function handleSlackEvent(request: Request) {
 			});
 		}
 
-		// Handle file message events
+		// Handle message events
 		if (
 			payload.type === "event_callback" &&
 			payload.event?.type === "message"
 		) {
 			const event = payload.event;
 
-			// Check for files
-			if (!event.files || event.files.length === 0) {
-				return new Response("OK", { status: 200 });
-			}
-
 			// Check if channel is allowed
 			if (
 				ALLOWED_CHANNELS.length > 0 &&
 				!ALLOWED_CHANNELS.includes(event.channel)
 			) {
+				return new Response("OK", { status: 200 });
+			}
+
+			// Handle "delete" command in threads
+			const text = (event.text || "").toLowerCase().trim();
+			if (event.thread_ts && text === "delete") {
+				handleDeleteRequest(event).catch(console.error);
+				return new Response("OK", { status: 200 });
+			}
+
+			// Ignore thread replies with files (only process top-level uploads)
+			if (event.thread_ts) {
+				return new Response("OK", { status: 200 });
+			}
+
+			// Check for files
+			if (!event.files || event.files.length === 0) {
 				return new Response("OK", { status: 200 });
 			}
 
@@ -315,6 +330,118 @@ interface SlackMessageEvent {
 	files?: SlackFile[];
 	channel: string;
 	ts: string;
+	thread_ts?: string;
+	user?: string;
+}
+
+// Find image keys, original uploader, and bot message ts from a thread
+async function getThreadInfo(
+	channel: string,
+	threadTs: string,
+): Promise<{ keys: string[]; originalUser: string | null; botMessageTs: string | null }> {
+	const params = new URLSearchParams({ channel, ts: threadTs });
+	const response = await fetch(
+		`https://slack.com/api/conversations.replies?${params}`,
+		{
+			headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` },
+		},
+	);
+	const data = await response.json();
+	if (!data.ok) {
+		throw new Error(`Slack API error: ${data.error}`);
+	}
+
+	const messages = data.messages || [];
+	const originalUser = messages[0]?.user || null;
+
+	const urlPattern = new RegExp(
+		`${PUBLIC_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/i/([\\w-]+\\.[a-z]+)`,
+		"g",
+	);
+
+	const keys: string[] = [];
+	let botMessageTs: string | null = null;
+	for (const msg of messages) {
+		if (msg.bot_id || msg.subtype === "bot_message") {
+			let match: RegExpExecArray | null;
+			while ((match = urlPattern.exec(msg.text || "")) !== null) {
+				keys.push(match[1]);
+			}
+			if (keys.length > 0 && !botMessageTs) {
+				botMessageTs = msg.ts;
+			}
+		}
+	}
+	return { keys, originalUser, botMessageTs };
+}
+
+async function handleDeleteRequest(event: SlackMessageEvent) {
+	try {
+		const { keys, originalUser, botMessageTs } = await getThreadInfo(
+			event.channel,
+			event.thread_ts!,
+		);
+
+		// Only allow the original uploader or admins to delete
+		const isOriginalUser = originalUser && event.user === originalUser;
+		const isAdmin = event.user && ADMIN_USERS.includes(event.user);
+		if (!isOriginalUser && !isAdmin) {
+			await callSlackAPI("reactions.add", {
+				channel: event.channel,
+				timestamp: event.ts,
+				name: "no_entry",
+			});
+			return;
+		}
+
+		if (keys.length === 0 || !botMessageTs) {
+			return;
+		}
+
+		// Delete images from R2 and stats DB
+		await Promise.all(keys.map((key) => s3.delete(key)));
+		keys.forEach((key) => deleteImageStats(key));
+		console.log(`Deleted ${keys.length} image(s): ${keys.join(", ")}`);
+
+		// Strikethrough the bot's message
+		const strikethroughText = keys
+			.map((key) => `~${PUBLIC_URL}/i/${key}~`)
+			.join("\n");
+
+		await Promise.all([
+			// React on the delete message
+			callSlackAPI("reactions.add", {
+				channel: event.channel,
+				timestamp: event.ts,
+				name: "yay-still",
+			}),
+			// Strikethrough the bot's URL message
+			callSlackAPI("chat.update", {
+				channel: event.channel,
+				ts: botMessageTs,
+				text: strikethroughText,
+			}),
+			// Add boomparrot to the original top-level message
+			callSlackAPI("reactions.add", {
+				channel: event.channel,
+				timestamp: event.thread_ts!,
+				name: "boomparrot",
+			}),
+			// Remove yay from the original top-level message
+			callSlackAPI("reactions.remove", {
+				channel: event.channel,
+				timestamp: event.thread_ts!,
+				name: "yay-still",
+			}).catch(() => {}),
+		]);
+	} catch (error) {
+		console.error("Error handling delete request:", error);
+		await callSlackAPI("reactions.add", {
+			channel: event.channel,
+			timestamp: event.ts,
+			name: "rac-concern",
+		}).catch(console.error);
+	}
 }
 
 async function processSlackFiles(event: SlackMessageEvent) {
