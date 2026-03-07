@@ -69,7 +69,14 @@ async function uploadImageToR2(
 	contentType: string,
 ): Promise<string> {
 	// Skip collision check - nanoid(12) has 4.7 quadrillion possibilities, collision is astronomically unlikely
-	const extension = contentType === "image/svg+xml" ? "svg" : "webp";
+	const mimeToExt: Record<string, string> = {
+		"image/svg+xml": "svg",
+		"image/webp": "webp",
+		"image/png": "png",
+		"image/jpeg": "jpg",
+		"image/gif": "gif",
+	};
+	const extension = mimeToExt[contentType] || "webp";
 	const imageKey = `${nanoid(12)}.${extension}`;
 
 	// Upload to R2 using the S3 client
@@ -312,9 +319,10 @@ interface SlackMessageEvent {
 
 async function processSlackFiles(event: SlackMessageEvent) {
 	try {
-		// Check if message text contains "preserve"
+		// Check if message text contains "preserve" or "png" to keep original format
+		const text = event.text?.toLowerCase() ?? "";
 		const preserveFormat =
-			event.text?.toLowerCase().includes("preserve") ?? false;
+			text.includes("preserve") || text.includes("png");
 
 		// React with loading emoji (don't await - do it in parallel with downloads)
 		const loadingReaction = callSlackAPI("reactions.add", {
