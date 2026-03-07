@@ -296,7 +296,13 @@ async function handleSlackEvent(request: Request) {
 				return new Response("OK", { status: 200 });
 			}
 
-			// Ignore thread replies with files (only process top-level uploads)
+			// Handle thread replies with files as replacements
+			if (event.thread_ts && event.files?.length > 0) {
+				handleReplaceRequest(event).catch(console.error);
+				return new Response("OK", { status: 200 });
+			}
+
+			// Ignore other thread replies
 			if (event.thread_ts) {
 				return new Response("OK", { status: 200 });
 			}
@@ -436,6 +442,86 @@ async function handleDeleteRequest(event: SlackMessageEvent) {
 		]);
 	} catch (error) {
 		console.error("Error handling delete request:", error);
+		await callSlackAPI("reactions.add", {
+			channel: event.channel,
+			timestamp: event.ts,
+			name: "rac-concern",
+		}).catch(console.error);
+	}
+}
+
+async function handleReplaceRequest(event: SlackMessageEvent) {
+	try {
+		const { keys, originalUser } = await getThreadInfo(
+			event.channel,
+			event.thread_ts!,
+		);
+
+		// Only allow the original uploader or admins to replace
+		const isOriginalUser = originalUser && event.user === originalUser;
+		const isAdmin = event.user && ADMIN_USERS.includes(event.user);
+		if (!isOriginalUser && !isAdmin) {
+			await callSlackAPI("reactions.add", {
+				channel: event.channel,
+				timestamp: event.ts,
+				name: "no_entry",
+			});
+			return;
+		}
+
+		if (keys.length === 0) {
+			return;
+		}
+
+		const loadingReaction = callSlackAPI("reactions.add", {
+			channel: event.channel,
+			timestamp: event.ts,
+			name: "spinny_fox",
+		});
+
+		const files = event.files || [];
+		await Promise.all(
+			files.map(async (file, index) => {
+				if (index >= keys.length) return;
+
+				const existingKey = keys[index];
+				const existingExt = existingKey.split(".").pop() || "";
+				const preserveFormat = existingExt !== "webp";
+
+				const fileResponse = await fetch(file.url_private, {
+					headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` },
+				});
+				if (!fileResponse.ok) {
+					throw new Error("Failed to download file from Slack");
+				}
+
+				const originalBuffer = Buffer.from(await fileResponse.arrayBuffer());
+				const contentType = file.mimetype || "image/jpeg";
+
+				const { buffer: optimizedBuffer, contentType: newContentType } =
+					await optimizeImage(originalBuffer, contentType, preserveFormat);
+
+				await s3.write(existingKey, optimizedBuffer, { type: newContentType });
+				console.log(`Replaced in R2: ${existingKey}`);
+			}),
+		);
+
+		await loadingReaction;
+
+		await Promise.all([
+			callSlackAPI("reactions.remove", {
+				channel: event.channel,
+				timestamp: event.ts,
+				name: "spinny_fox",
+			}),
+			callSlackAPI("reactions.add", {
+				channel: event.channel,
+				timestamp: event.ts,
+				name: "yay-still",
+			}),
+		]);
+	} catch (error) {
+		console.error("Error handling replace request:", error);
 		await callSlackAPI("reactions.add", {
 			channel: event.channel,
 			timestamp: event.ts,
