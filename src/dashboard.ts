@@ -45,7 +45,7 @@ function downsample(
 
 	let endIdx = timestamps.length - 1;
 	for (let i = timestamps.length - 1; i >= 0; i--) {
-		if (timestamps[i]! <= maxX) {
+		if ((timestamps[i] ?? 0) <= maxX) {
 			endIdx = i;
 			break;
 		}
@@ -68,9 +68,9 @@ function downsample(
 	for (let i = 0; i < sliceLen; i += bucketSize) {
 		const jEnd = Math.min(i + bucketSize, sliceLen);
 		let sumHits = 0;
-		for (let j = i; j < jEnd; j++) sumHits += hSlice[j]!;
+		for (let j = i; j < jEnd; j++) sumHits += hSlice[j] ?? 0;
 		const avgHits = sumHits / (jEnd - i);
-		dsTs.push(tsSlice[i]!);
+		dsTs.push(tsSlice[i] ?? 0);
 		dsHits.push(avgHits);
 	}
 
@@ -84,8 +84,6 @@ class Dashboard {
 	private originalRange: { start: number; end: number } | null = null;
 	private currentRange: { start: number; end: number } | null = null;
 	private lodCache: Partial<Record<Granularity, LodCacheEntry>> = {};
-	private activeGranularity: Granularity | null = null;
-	private isLoading = false;
 
 	private readonly totalHitsEl = document.getElementById(
 		"total-hits",
@@ -135,7 +133,6 @@ class Dashboard {
 			this.currentRange = null;
 			this.originalRange = null;
 			this.lodCache = {};
-			this.activeGranularity = null;
 			this.updateActiveButton();
 			this.fetchData();
 		}
@@ -150,7 +147,6 @@ class Dashboard {
 					this.currentRange = null;
 					this.originalRange = null;
 					this.lodCache = {};
-					this.activeGranularity = null;
 					this.updateActiveButton();
 					this.updateUrl(newDays);
 					this.fetchData();
@@ -169,7 +165,6 @@ class Dashboard {
 	}
 
 	private setLoading(loading: boolean) {
-		this.isLoading = loading;
 		if (this.loadingEl) {
 			this.loadingEl.classList.toggle("visible", loading);
 		}
@@ -280,8 +275,8 @@ class Dashboard {
 		const { timestamps, hits } = this.transformTraffic(traffic);
 		if (timestamps.length === 0) return;
 
-		const first = timestamps[0]!;
-		const last = timestamps[timestamps.length - 1]!;
+		const first = timestamps[0] ?? 0;
+		const last = timestamps[timestamps.length - 1] ?? 0;
 
 		const gran = traffic.granularity as Granularity;
 
@@ -291,8 +286,6 @@ class Dashboard {
 			timestamps,
 			hits,
 		};
-
-		this.activeGranularity = gran;
 
 		if (!this.currentRange) {
 			this.originalRange = { start: first, end: last };
@@ -348,8 +341,6 @@ class Dashboard {
 		const cache = this.getBestCacheForRange(minX, maxX);
 		if (!cache) return;
 
-		this.activeGranularity = cache.granularity;
-
 		const width = this.chartEl.clientWidth || 600;
 		const maxPoints = Math.min(width, 800);
 
@@ -385,16 +376,13 @@ class Dashboard {
 
 		this.currentRange = { start: min, end: max };
 
+		this.renderCurrentViewport({ min, max });
+
 		const bestCache = this.getBestCacheForRange(min, max);
 		const targetGran = this.getGranularityForRange(min, max);
-
-		if (bestCache && bestCache.granularity === targetGran) {
-			this.renderCurrentViewport({ min, max });
-			return;
+		if (!bestCache || bestCache.granularity !== targetGran) {
+			this.fetchData();
 		}
-
-		this.renderCurrentViewport({ min, max });
-		this.fetchData();
 	}
 
 	private resetZoom() {
@@ -427,7 +415,7 @@ class Dashboard {
 			scales: {
 				x: {
 					time: true,
-					range: (u, dataMin, dataMax) => {
+					range: (_u, dataMin, dataMax) => {
 						let min = dataMin;
 						let max = dataMax;
 						const minSpan = 1.5 * 86400;

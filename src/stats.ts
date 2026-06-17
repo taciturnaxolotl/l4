@@ -92,17 +92,13 @@ export function getStats(imageKey: string, sinceDays: number = 30) {
 export function getTopImages(sinceDays: number = 7, limit: number = 10) {
 	const since = Math.floor(Date.now() / 1000) - sinceDays * 86400;
 
-	// Combine data from both hourly and 10-minute tables
 	return db
 		.prepare(
-			`SELECT image_key, SUM(hits) as total FROM (
-         SELECT image_key, hits FROM image_stats WHERE bucket_hour >= ?
-         UNION ALL
-         SELECT image_key, hits FROM image_stats_10min WHERE bucket_10min >= ?
-       ) 
+			`SELECT image_key, SUM(hits) as total FROM image_stats
+       WHERE bucket_hour >= ?
        GROUP BY image_key ORDER BY total DESC LIMIT ?`,
 		)
-		.all(since, since, limit);
+		.all(since, limit);
 }
 
 export function getTotalHits(sinceDays: number = 30) {
