@@ -95,6 +95,10 @@ async function callSlackAPI(
 async function purgeCache(keys: string[]) {
 	if (!CF_ZONE_ID || !CF_API_TOKEN) return;
 	const urls = keys.map((key) => `${PUBLIC_URL}/i/${key}`);
+
+	// Wait for R2 write propagation before purging
+	await new Promise((r) => setTimeout(r, 5000));
+
 	try {
 		const res = await fetch(
 			`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache`,
@@ -109,7 +113,9 @@ async function purgeCache(keys: string[]) {
 		);
 		const data = await res.json();
 		if (!data.success) {
-			console.error("Cache purge failed:", data.errors);
+			console.error("Cache purge failed:", JSON.stringify(data.errors));
+		} else {
+			console.log(`Cache purged: ${urls.join(", ")}`);
 		}
 	} catch (err) {
 		console.error("Cache purge failed:", err);
