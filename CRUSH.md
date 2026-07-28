@@ -2,98 +2,89 @@
 
 ## Commands
 
-### Development
 ```bash
-bun run dev          # Start local development server
-bun run deploy       # Deploy to Cloudflare
-bun run types        # Generate TypeScript types
-```
-
-### Wrangler
-```bash
-wrangler r2 bucket create l4-images     # Create R2 bucket
-wrangler secret put AUTH_TOKEN          # Set auth token for API uploads
-wrangler secret put SLACK_BOT_TOKEN     # Set Slack bot token
-wrangler secret put SLACK_SIGNING_SECRET # Set Slack signing secret
+bun install
+bun run dev          # Start local dev server with --watch
+bun start            # Run src/index.ts
 ```
 
 ## Project Structure
 
-- `/src/index.ts` - Worker with Slack bot and upload endpoint
-- `/wrangler.toml` - Cloudflare Workers configuration
-- `/manifest.yaml` - Slack app manifest for easy setup
+- `/src/index.ts` - Bun.serve() with all routes
+- `/src/slack.ts` - Slack Events API handler
+- `/src/images.ts` - S3/R2 client (Bun.S3Client) and sharp optimization
+- `/src/stats.ts` - SQLite hit stats (bun:sqlite, WAL mode, migrations in /migrations)
+- `/src/dashboard.html` - Stats dashboard
 
 ## What It Does
 
-Slack CDN bot for Cloudflare Workers:
-- Automatically uploads files posted in Slack to R2
-- Returns public URLs in thread
-- Uses custom emoji reactions for status (:spinny_fox: → :good_move: or :rac-concern:)
-- Also supports direct API uploads with auth token
-- Images served with transformations via Cloudflare's edge
+Slack-driven image CDN on Bun:
+- Uploads files posted in Slack to R2 (via S3-compatible API)
+- Converts to WebP (quality 85, sharp) unless told to preserve the format
+- Replies in thread with public URLs, reacts with emoji for status
+- Supports in-thread "delete" and replace-by-reply flows (original poster or ADMIN_USERS)
+- Purges Cloudflare cache after deletes and replacements (5s delay for R2 propagation)
+- Direct API uploads with bearer token
+- Records per-image hit stats in SQLite (10min/hourly/daily buckets), served via stats API and dashboard
 
 ## Endpoints
 
 ### Public
-- `GET /i/:key?w=800&h=600&f=webp&q=85&fit=scale-down` - Serve image with transformations
+- `GET /` - Text banner; redirects browsers (Accept: text/html) to `/dashboard`
+- `GET /i/:key` - Records a hit, 307 redirects to R2 object. No transform params.
+- `GET /health` - `{ "status": "ok" }`
+- `GET /dashboard` - Stats dashboard page
+
+### Stats API (JSON, `days` clamped 1-365)
+- `GET /api/stats/overview?days=7` - totalHits, uniqueImages, topImages (max 20)
+- `GET /api/stats/traffic?days=7` - time series; granularity 10min (<=1d), hourly (<=30d), daily (>30d); or pass `start`/`end` unix seconds
+- `GET /api/stats/image/:key?days=30` - hourly hits for one image
 
 ### Slack
-- `POST /slack/events` - Slack Events API endpoint
-  - Listens for `message` events with files
-  - Downloads files from Slack
-  - Uploads to R2 with random filename
-  - Posts URLs in thread
+- `POST /slack/events` - Slack Events API
+  - Verifies X-Slack-Signature (HMAC-SHA256, 5min timestamp window)
+  - Top-level file post: downloads, optimizes, uploads, replies in thread
+  - Message text containing "preserve" or "png" keeps the original format
+  - Thread reply "delete": deletes R2 objects + stats, purges cache, strikes through URLs
+  - Thread reply with files: overwrites existing keys in R2, purges cache
+  - Delete/replace restricted to original poster or ADMIN_USERS; others get :no_entry:
 
 ### API (requires `Authorization: Bearer <AUTH_TOKEN>`)
-- `POST /upload` - Upload image (multipart form-data with `file` field)
-  - Returns: `{"success": true, "url": "https://.../i/xxx.jpg"}`
-
-## Image URL Parameters
-
-- `w` - width
-- `h` - height  
-- `f` - format (auto, webp, avif, jpeg)
-- `q` - quality (1-100)
-- `fit` - fit mode (scale-down, contain, cover, crop, pad)
+- `POST /upload` - multipart form-data
+  - `file` (required) - the image
+  - `preserveFormat` (optional) - "true" to skip WebP conversion
+  - Returns `{"success": true, "url": "https://.../i/xxx.webp"}`
+  - SVG always passes through unoptimized
+  - Key format: nanoid(12) + extension from content type
 
 ## Environment Variables
 
-Config (wrangler.toml):
-- `PUBLIC_URL` - Public URL of the service (e.g., https://l4.dunkirk.sh)
-- `ALLOWED_CHANNELS` - Comma-separated Slack channel IDs (e.g., "C12345,C67890"). Leave empty to allow all channels.
-
-Secrets:
-- `AUTH_TOKEN` - Auth token for API uploads
+- `PUBLIC_URL` - Public URL of the service (default http://localhost:3000)
+- `PORT` - Listen port (default 3000)
+- `R2_PUBLIC_URL` - Public base URL of the R2 bucket; `/i/:key` redirects here
+- `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` / `S3_ENDPOINT` / `S3_BUCKET` / `S3_REGION` - R2 credentials (AWS_* fallbacks also read)
+- `AUTH_TOKEN` - Bearer token for /upload
 - `SLACK_BOT_TOKEN` - Slack bot user OAuth token
 - `SLACK_SIGNING_SECRET` - Slack app signing secret
+- `ALLOWED_CHANNELS` - Comma-separated channel IDs; empty allows all
+- `ADMIN_USERS` - Comma-separated Slack user IDs allowed to delete/replace any image
+- `CF_ZONE_ID` / `CF_API_TOKEN` - Cloudflare zone for cache purging
+- `STATS_DB_PATH` - SQLite path (default ./data/stats.db)
+- `NODE_ENV=dev` - Enables Bun development mode (HMR)
 
-## Bindings
+## Storage
 
-- `IMAGES` - R2 bucket for image storage
+- Images: R2 bucket via Bun.S3Client (default bucket `l4-images`)
+- Stats: bun:sqlite with WAL, migrated by bun-sqlite-migrations from /migrations
+- Three bucket tables: 10min (24h retention, cleaned inline), hourly, daily
 
 ## Slack Setup
 
-### Option 1: Using Manifest (Easy)
-1. Go to api.slack.com/apps
-2. Click "Create New App" → "From an app manifest"
-3. Select your workspace
-4. Paste contents of `manifest.yaml`
-5. Update the request URL if needed
-6. Install app to workspace
-7. Copy "Bot User OAuth Token" and "Signing Secret"
-8. Set secrets in Workers:
-   ```bash
-   wrangler secret put SLACK_BOT_TOKEN
-   wrangler secret put SLACK_SIGNING_SECRET
-   ```
-
-### Option 2: Manual Setup
 1. Create Slack app at api.slack.com/apps
 2. Enable Event Subscriptions, set URL to `https://l4.dunkirk.sh/slack/events`
 3. Subscribe to bot events: `message.channels`, `message.groups`, `message.im`, `message.mpim`
 4. Add OAuth scopes: `files:read`, `reactions:write`, `chat:write`
-5. Install app to workspace
-6. Set secrets in Workers
+5. Install app to workspace, set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`
 
 ## Usage Examples
 
@@ -103,11 +94,21 @@ curl -X POST https://l4.dunkirk.sh/upload \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "file=@image.jpg"
 
-# Slack: Just post a file in a channel where the bot is invited
+# API upload, keep original format
+curl -X POST https://l4.dunkirk.sh/upload \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "file=@image.png" \
+  -F "preserveFormat=true"
+
+# Slack: post a file where the bot is invited.
+# Reply "delete" in the thread to remove it.
+# Reply with new files in the thread to replace it.
 ```
 
 ## Emoji Reactions
 
-- `:spinny_fox:` - Uploading in progress
-- `:good_move:` - Upload succeeded
-- `:rac-concern:` - Upload failed
+- `:spinny_fox:` - Upload in progress
+- `:yay-still:` - Success
+- `:rac-concern:` - Failure
+- `:no_entry:` - Unauthorized delete/replace attempt
+- `:boomparrot:` - Added to thread parent on delete
