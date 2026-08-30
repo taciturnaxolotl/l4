@@ -8,18 +8,18 @@
 	},
 	"devDependencies": {
 		"@types/bun": "latest",
-		"@types/react": "^19.2.7",
-		"@types/react-dom": "^19.2.3"
+		"@types/react": "^19.2.18",
+		"@types/react-dom": "^19.2.5"
 	},
 	"peerDependencies": {
-		"typescript": "^5"
+		"typescript": "^5.9.3"
 	},
 	"dependencies": {
 		"bun-sqlite-migrations": "^1.0.2",
-		"lit": "^3.3.1",
-		"nanoid": "^5.1.6",
-		"react": "^19.2.3",
-		"react-dom": "^19.2.3",
+		"lit": "^3.3.3",
+		"nanoid": "^5.1.16",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
 		"sharp": "^0.34.5",
 		"uplot": "^1.6.32"
 	}
