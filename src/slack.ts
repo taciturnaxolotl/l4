@@ -1,3 +1,4 @@
+import { purgeCache } from "./cache";
 import {
 	deleteImageFromR2,
 	optimizeImage,
@@ -13,8 +14,6 @@ const ALLOWED_CHANNELS =
 	process.env.ALLOWED_CHANNELS?.split(",").map((c) => c.trim()) || [];
 const ADMIN_USERS =
 	process.env.ADMIN_USERS?.split(",").map((u) => u.trim()) || [];
-const CF_ZONE_ID = process.env.CF_ZONE_ID || "";
-const CF_API_TOKEN = process.env.CF_API_TOKEN || "";
 
 interface SlackFile {
 	url_private: string;
@@ -69,10 +68,7 @@ async function verifySlackSignature(
 
 // --- Slack API helper ---
 
-async function callSlackAPI(
-	method: string,
-	params: Record<string, unknown>,
-) {
+async function callSlackAPI(method: string, params: Record<string, unknown>) {
 	const response = await fetch(`https://slack.com/api/${method}`, {
 		method: "POST",
 		headers: {
@@ -88,38 +84,6 @@ async function callSlackAPI(
 	}
 
 	return data;
-}
-
-// --- Cache purging ---
-
-async function purgeCache(keys: string[]) {
-	if (!CF_ZONE_ID || !CF_API_TOKEN) return;
-	const urls = keys.map((key) => `${PUBLIC_URL}/i/${key}`);
-
-	// Wait for R2 write propagation before purging
-	await new Promise((r) => setTimeout(r, 5000));
-
-	try {
-		const res = await fetch(
-			`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache`,
-			{
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${CF_API_TOKEN}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ files: urls }),
-			},
-		);
-		const data = await res.json();
-		if (!data.success) {
-			console.error("Cache purge failed:", JSON.stringify(data.errors));
-		} else {
-			console.log(`Cache purged: ${urls.join(", ")}`);
-		}
-	} catch (err) {
-		console.error("Cache purge failed:", err);
-	}
 }
 
 // --- Thread info + authorization ---
@@ -160,15 +124,22 @@ async function getThreadInfo(channel: string, threadTs: string) {
 
 async function authorizeAction(
 	event: SlackMessageEvent,
-): Promise<{ authorized: boolean; threadInfo: Awaited<ReturnType<typeof getThreadInfo>> }> {
+): Promise<{
+	authorized: boolean;
+	threadInfo: Awaited<ReturnType<typeof getThreadInfo>>;
+}> {
 	const threadTs = event.thread_ts;
 	if (!threadTs) {
-		return { authorized: false, threadInfo: { keys: [], originalUser: null, botMessageTs: null } };
+		return {
+			authorized: false,
+			threadInfo: { keys: [], originalUser: null, botMessageTs: null },
+		};
 	}
 
 	const threadInfo = await getThreadInfo(event.channel, threadTs);
 
-	const isOriginalUser = threadInfo.originalUser && event.user === threadInfo.originalUser;
+	const isOriginalUser =
+		threadInfo.originalUser && event.user === threadInfo.originalUser;
 	const isAdmin = event.user && ADMIN_USERS.includes(event.user);
 
 	if (!isOriginalUser && !isAdmin) {
@@ -307,8 +278,7 @@ async function handleReplaceRequest(event: SlackMessageEvent) {
 async function processSlackFiles(event: SlackMessageEvent) {
 	try {
 		const text = event.text?.toLowerCase() ?? "";
-		const preserveFormat =
-			text.includes("preserve") || text.includes("png");
+		const preserveFormat = text.includes("preserve") || text.includes("png");
 
 		const loadingReaction = callSlackAPI("reactions.add", {
 			channel: event.channel,

@@ -64,3 +64,7 @@ export async function deleteImageFromR2(key: string): Promise<void> {
 }
 
 export { s3 };
+
+export async function imageExistsInR2(key: string): Promise<boolean> {
+	return s3.exists(key);
+}

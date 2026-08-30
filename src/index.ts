@@ -1,5 +1,11 @@
+import { purgeCache } from "./cache";
 import dashboard from "./dashboard.html";
-import { optimizeImage, uploadImageToR2 } from "./images";
+import {
+	imageExistsInR2,
+	optimizeImage,
+	overwriteImageInR2,
+	uploadImageToR2,
+} from "./images";
 import { handleSlackEvent } from "./slack";
 import {
 	getStats,
@@ -14,10 +20,73 @@ const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "";
 const PUBLIC_URL = process.env.PUBLIC_URL || "http://localhost:3000";
 const AUTH_TOKEN = process.env.AUTH_TOKEN;
 
+const CORS_HEADERS: Record<string, string> = {
+	"Access-Control-Allow-Origin": "*",
+	"Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+	"Access-Control-Allow-Headers": "Authorization, Content-Type",
+	"Access-Control-Max-Age": "86400",
+};
+
+function withCorsHeaders(response: Response): Response {
+	const headers = new Headers(response.headers);
+	for (const [key, value] of Object.entries(CORS_HEADERS)) {
+		headers.set(key, value);
+	}
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers,
+	});
+}
+
+// Bun routes have no middleware hook, so wrap every handler once at definition.
+type RouteHandler = (request: Request & { params: any }, server: any) => any;
+
+function withCors<R extends string>(
+	routes: Bun.Serve.Routes<undefined, R>,
+): Bun.Serve.Routes<undefined, R> {
+	const wrap =
+		(handler: RouteHandler): RouteHandler =>
+		async (request, server) =>
+			withCorsHeaders(await handler(request, server));
+
+	const wrapped: Record<string, unknown> = {};
+	for (const [path, route] of Object.entries(routes)) {
+		if (typeof route === "function") {
+			wrapped[path] = wrap(route as RouteHandler);
+		} else if (
+			route &&
+			typeof route === "object" &&
+			Object.values(route).every((handler) => typeof handler === "function")
+		) {
+			wrapped[path] = {
+				OPTIONS: () => withCorsHeaders(new Response(null, { status: 204 })),
+				...Object.fromEntries(
+					Object.entries(route).map(([method, handler]) => [
+						method,
+						wrap(handler as RouteHandler),
+					]),
+				),
+			};
+		} else {
+			// HTML bundles (the dashboard) pass through untouched.
+			wrapped[path] = route;
+		}
+	}
+	return wrapped as Bun.Serve.Routes<undefined, R>;
+}
+
+function isAuthorized(request: Request): boolean {
+	return (
+		!!AUTH_TOKEN &&
+		request.headers.get("Authorization") === `Bearer ${AUTH_TOKEN}`
+	);
+}
+
 const server = Bun.serve({
 	port: process.env.PORT || 3000,
 
-	routes: {
+	routes: withCors({
 		"/": {
 			GET(request) {
 				const accept = request.headers.get("Accept") || "";
@@ -131,19 +200,22 @@ const server = Bun.serve({
 
 				return Response.redirect(`${R2_PUBLIC_URL}/${imageKey}`, 307);
 			},
+
+			async PUT(request) {
+				return handleOverwrite(request, request.params.key);
+			},
 		},
-	},
+	}),
 
 	async fetch(_request) {
-		return new Response("Not found", { status: 404 });
+		return withCorsHeaders(new Response("Not found", { status: 404 }));
 	},
 	development: process.env?.NODE_ENV === "dev",
 });
 
 async function handleUpload(request: Request) {
 	try {
-		const authHeader = request.headers.get("Authorization");
-		if (!AUTH_TOKEN || authHeader !== `Bearer ${AUTH_TOKEN}`) {
+		if (!isAuthorized(request)) {
 			return new Response("Unauthorized", { status: 401 });
 		}
 
@@ -173,6 +245,54 @@ async function handleUpload(request: Request) {
 		console.error("Error handling upload:", error);
 		return Response.json(
 			{ success: false, error: "Upload failed" },
+			{ status: 500 },
+		);
+	}
+}
+
+async function handleOverwrite(request: Request, imageKey: string) {
+	try {
+		if (!isAuthorized(request)) {
+			return new Response("Unauthorized", { status: 401 });
+		}
+
+		if (!imageKey || !(await imageExistsInR2(imageKey))) {
+			return Response.json(
+				{ success: false, error: "Image not found" },
+				{ status: 404 },
+			);
+		}
+
+		const formData = await request.formData();
+		const file = formData.get("file") as File;
+
+		if (!file) {
+			return Response.json(
+				{ success: false, error: "No file provided" },
+				{ status: 400 },
+			);
+		}
+
+		// The key carries its extension, so the replacement keeps the old format.
+		const preserveFormat = imageKey.split(".").pop() !== "webp";
+
+		const originalBuffer = Buffer.from(await file.arrayBuffer());
+		const contentType = file.type || "image/jpeg";
+
+		const { buffer: optimizedBuffer, contentType: newContentType } =
+			await optimizeImage(originalBuffer, contentType, preserveFormat);
+
+		await overwriteImageInR2(imageKey, optimizedBuffer, newContentType);
+		console.log(`Replaced in R2: ${imageKey}`);
+
+		// Purging waits on R2 propagation; don't hold the response for it.
+		void purgeCache([imageKey]);
+
+		return Response.json({ success: true, url: `${PUBLIC_URL}/i/${imageKey}` });
+	} catch (error) {
+		console.error("Error handling overwrite:", error);
+		return Response.json(
+			{ success: false, error: "Overwrite failed" },
 			{ status: 500 },
 		);
 	}

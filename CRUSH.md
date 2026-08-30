@@ -12,6 +12,7 @@ bun start            # Run src/index.ts
 
 - `/src/index.ts` - Bun.serve() with all routes
 - `/src/slack.ts` - Slack Events API handler
+- `/src/cache.ts` - Cloudflare cache purging
 - `/src/images.ts` - S3/R2 client (Bun.S3Client) and sharp optimization
 - `/src/stats.ts` - SQLite hit stats (bun:sqlite, WAL mode, migrations in /migrations)
 - `/src/dashboard.html` - Stats dashboard
@@ -33,6 +34,7 @@ Slack-driven image CDN on Bun:
 - `GET /` - Text banner; redirects browsers (Accept: text/html) to `/dashboard`
 - `GET /i/:key` - Records a hit, 307 redirects to R2 object. No transform params.
 - `GET /health` - `{ "status": "ok" }`
+- All routes send `Access-Control-Allow-Origin: *` and answer `OPTIONS` preflights
 - `GET /dashboard` - Stats dashboard page
 
 ### Stats API (JSON, `days` clamped 1-365)
@@ -56,6 +58,10 @@ Slack-driven image CDN on Bun:
   - Returns `{"success": true, "url": "https://.../i/xxx.webp"}`
   - SVG always passes through unoptimized
   - Key format: nanoid(12) + extension from content type
+- `PUT /i/:key` - multipart form-data, replaces an existing image in place
+  - `file` (required) - the new image
+  - Keeps the key's original format (converts to WebP only if the key ends in `.webp`)
+  - 404s if the key does not exist; purges the Cloudflare cache in the background
 
 ## Environment Variables
 
@@ -99,6 +105,11 @@ curl -X POST https://l4.dunkirk.sh/upload \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "file=@image.png" \
   -F "preserveFormat=true"
+
+# Replace an existing image
+curl -X PUT https://l4.dunkirk.sh/i/abc123.webp \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "file=@new.jpg"
 
 # Slack: post a file where the bot is invited.
 # Reply "delete" in the thread to remove it.
